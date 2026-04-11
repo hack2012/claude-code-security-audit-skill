@@ -33,6 +33,41 @@ When evaluating findings, reject these false-positive rationalizations:
 - **Progressive Disclosure**: Scan high-risk areas first, drill down incrementally
 - **CLI + Chrome MCP**: Automate what CLI/API can reach; use Chrome MCP for dashboard-only settings
 
+## Execution Rules
+
+### Report Generation
+
+When findings exceed **10 items** or span **3+ layers**, pause and ask the user:
+
+> "Found X findings (Critical: N / High: N / Medium: N / Low: N). Would you like to generate a report file?"
+
+- **Yes**: Generate `security-audit-report-YYYY-MM-DD.md` in the project root
+- **No**: Continue with inline summary only
+
+### Chrome MCP Dashboard Findings
+
+Dashboard settings found via Chrome MCP **cannot be fixed by CLI or code changes**. For each dashboard finding, include:
+
+1. **Current Value**: The current state observed via Chrome MCP
+2. **Recommended Value**: The security-recommended setting
+3. **Manual Remediation Steps**: Step-by-step instructions to change the setting in the dashboard (screen path + actions)
+4. **Impact**: Side effects of the change on existing functionality
+
+Example format in report:
+
+```markdown
+### [HIGH-003] Vercel Deployment Protection Disabled
+- **Current Value**: Deployment Protection = OFF
+- **Recommended Value**: Deployment Protection = Vercel Authentication
+- **Manual Remediation Steps**:
+  1. Vercel Dashboard → Project Settings → Deployment Protection
+  2. Select "Standard Protection"
+  3. Enable "Vercel Authentication"
+  4. Verify protection level for Preview Deployments
+  5. Click "Save"
+- **Impact**: Public access to Preview URLs will be restricted. Sharing with external stakeholders requires configuring Shareable Links.
+```
+
 ## Target Selection
 
 ```
@@ -236,6 +271,8 @@ Evaluate threats that span multiple layers.
 | Cross-Layer  | X | X | X | X |
 
 ## Findings
+
+### Code/Config Findings
 ### [CRITICAL-001] [vulnerability title]
 - **Layer**: [Web / Infrastructure / Backend / Mobile / Compliance / Advanced / Cross-layer]
 - **Category**: OWASP [A01/MASVS-STORAGE/CIS/PCI-DSS/etc.]
@@ -244,12 +281,26 @@ Evaluate threats that span multiple layers.
 - **Impact**: What happens if exploited
 - **Remediation**: diff-format code fix
 
+### Dashboard Findings (Manual Remediation Required)
+### [HIGH-XXX] [dashboard setting title]
+- **Layer**: [Vercel / Supabase / AWS Console / GCP Console / Azure Portal]
+- **Category**: [Configuration / Access Control / Encryption / etc.]
+- **Current Value**: [value observed via Chrome MCP]
+- **Recommended Value**: [security-recommended value]
+- **Manual Remediation Steps**:
+  1. [Dashboard URL / screen path]
+  2. [Specific action steps]
+  3. [Save / apply instructions]
+- **Impact**: [Side effects on existing functionality]
+
 ## Remediation Roadmap
-| Priority | Action | Layer |
-|----------|--------|-------|
-| Immediate | Fix Critical vulnerabilities | - |
-| Short-term | Fix High vulnerabilities | - |
-| Mid-term | Architecture improvements | - |
+| Priority | Action | Layer | Type |
+|----------|--------|-------|------|
+| Immediate | Fix Critical vulnerabilities | - | Code |
+| Immediate | Fix Critical dashboard settings | - | Manual |
+| Short-term | Fix High vulnerabilities | - | Code |
+| Short-term | Fix High dashboard settings | - | Manual |
+| Mid-term | Architecture improvements | - | Code |
 ```
 
 ## Tools and Agents
