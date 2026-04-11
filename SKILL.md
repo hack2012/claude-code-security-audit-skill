@@ -33,6 +33,41 @@ When evaluating findings, reject these false-positive rationalizations:
 - **Progressive Disclosure**: Scan high-risk areas first, drill down incrementally
 - **CLI + Chrome MCP**: Automate what CLI/API can reach; use Chrome MCP for dashboard-only settings
 
+## Execution Rules
+
+### Report Generation
+
+When findings exceed **10 件** or span **3 layers 以上**, pause and ask the user:
+
+> "X 件の finding が見つかりました（Critical: N / High: N / Medium: N / Low: N）。レポートファイルを生成しますか？"
+
+- **Yes**: Generate `security-audit-report-YYYY-MM-DD.md` in the project root
+- **No**: Continue with inline summary only
+
+### Chrome MCP Dashboard Findings
+
+Dashboard settings found via Chrome MCP **cannot be fixed by CLI or code changes**. For each dashboard finding, include:
+
+1. **現在の設定値**: Chrome MCP で確認した現在の状態
+2. **推奨設定値**: セキュリティ上の推奨値
+3. **手動変更手順**: ダッシュボードでの設定変更ステップ（画面パス + 操作手順）
+4. **影響範囲**: 変更による既存機能への影響
+
+Example format in report:
+
+```markdown
+### [HIGH-003] Vercel Deployment Protection が無効
+- **現在の設定値**: Deployment Protection = OFF
+- **推奨設定値**: Deployment Protection = Vercel Authentication
+- **手動変更手順**:
+  1. Vercel Dashboard → Project Settings → Deployment Protection
+  2. "Standard Protection" を選択
+  3. "Vercel Authentication" を有効化
+  4. Preview Deployments の保護レベルを確認
+  5. "Save" をクリック
+- **影響範囲**: Preview URL へのパブリックアクセスが制限される。外部ステークホルダーへの共有には Shareable Links の設定が必要。
+```
+
 ## Target Selection
 
 ```
@@ -236,6 +271,8 @@ Evaluate threats that span multiple layers.
 | Cross-Layer  | X | X | X | X |
 
 ## Findings
+
+### Code/Config Findings
 ### [CRITICAL-001] [vulnerability title]
 - **Layer**: [Web / Infrastructure / Backend / Mobile / Compliance / Advanced / Cross-layer]
 - **Category**: OWASP [A01/MASVS-STORAGE/CIS/PCI-DSS/etc.]
@@ -244,12 +281,26 @@ Evaluate threats that span multiple layers.
 - **Impact**: What happens if exploited
 - **Remediation**: diff-format code fix
 
+### Dashboard Findings (Manual Remediation Required)
+### [HIGH-XXX] [dashboard setting title]
+- **Layer**: [Vercel / Supabase / AWS Console / GCP Console / Azure Portal]
+- **Category**: [Configuration / Access Control / Encryption / etc.]
+- **現在の設定値**: [Chrome MCP で確認した値]
+- **推奨設定値**: [セキュリティ推奨値]
+- **手動変更手順**:
+  1. [ダッシュボード URL / 画面パス]
+  2. [具体的な操作ステップ]
+  3. [保存・適用の手順]
+- **影響範囲**: [変更による既存機能への影響]
+
 ## Remediation Roadmap
-| Priority | Action | Layer |
-|----------|--------|-------|
-| Immediate | Fix Critical vulnerabilities | - |
-| Short-term | Fix High vulnerabilities | - |
-| Mid-term | Architecture improvements | - |
+| Priority | Action | Layer | Type |
+|----------|--------|-------|------|
+| Immediate | Fix Critical vulnerabilities | - | Code |
+| Immediate | Fix Critical dashboard settings | - | Manual |
+| Short-term | Fix High vulnerabilities | - | Code |
+| Short-term | Fix High dashboard settings | - | Manual |
+| Mid-term | Architecture improvements | - | Code |
 ```
 
 ## Tools and Agents
