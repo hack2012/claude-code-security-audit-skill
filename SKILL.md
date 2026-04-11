@@ -37,9 +37,9 @@ When evaluating findings, reject these false-positive rationalizations:
 
 ### Report Generation
 
-When findings exceed **10 件** or span **3 layers 以上**, pause and ask the user:
+When findings exceed **10 items** or span **3+ layers**, pause and ask the user:
 
-> "X 件の finding が見つかりました（Critical: N / High: N / Medium: N / Low: N）。レポートファイルを生成しますか？"
+> "Found X findings (Critical: N / High: N / Medium: N / Low: N). Would you like to generate a report file?"
 
 - **Yes**: Generate `security-audit-report-YYYY-MM-DD.md` in the project root
 - **No**: Continue with inline summary only
@@ -48,24 +48,24 @@ When findings exceed **10 件** or span **3 layers 以上**, pause and ask the u
 
 Dashboard settings found via Chrome MCP **cannot be fixed by CLI or code changes**. For each dashboard finding, include:
 
-1. **現在の設定値**: Chrome MCP で確認した現在の状態
-2. **推奨設定値**: セキュリティ上の推奨値
-3. **手動変更手順**: ダッシュボードでの設定変更ステップ（画面パス + 操作手順）
-4. **影響範囲**: 変更による既存機能への影響
+1. **Current Value**: The current state observed via Chrome MCP
+2. **Recommended Value**: The security-recommended setting
+3. **Manual Remediation Steps**: Step-by-step instructions to change the setting in the dashboard (screen path + actions)
+4. **Impact**: Side effects of the change on existing functionality
 
 Example format in report:
 
 ```markdown
-### [HIGH-003] Vercel Deployment Protection が無効
-- **現在の設定値**: Deployment Protection = OFF
-- **推奨設定値**: Deployment Protection = Vercel Authentication
-- **手動変更手順**:
+### [HIGH-003] Vercel Deployment Protection Disabled
+- **Current Value**: Deployment Protection = OFF
+- **Recommended Value**: Deployment Protection = Vercel Authentication
+- **Manual Remediation Steps**:
   1. Vercel Dashboard → Project Settings → Deployment Protection
-  2. "Standard Protection" を選択
-  3. "Vercel Authentication" を有効化
-  4. Preview Deployments の保護レベルを確認
-  5. "Save" をクリック
-- **影響範囲**: Preview URL へのパブリックアクセスが制限される。外部ステークホルダーへの共有には Shareable Links の設定が必要。
+  2. Select "Standard Protection"
+  3. Enable "Vercel Authentication"
+  4. Verify protection level for Preview Deployments
+  5. Click "Save"
+- **Impact**: Public access to Preview URLs will be restricted. Sharing with external stakeholders requires configuring Shareable Links.
 ```
 
 ## Target Selection
@@ -285,13 +285,13 @@ Evaluate threats that span multiple layers.
 ### [HIGH-XXX] [dashboard setting title]
 - **Layer**: [Vercel / Supabase / AWS Console / GCP Console / Azure Portal]
 - **Category**: [Configuration / Access Control / Encryption / etc.]
-- **現在の設定値**: [Chrome MCP で確認した値]
-- **推奨設定値**: [セキュリティ推奨値]
-- **手動変更手順**:
-  1. [ダッシュボード URL / 画面パス]
-  2. [具体的な操作ステップ]
-  3. [保存・適用の手順]
-- **影響範囲**: [変更による既存機能への影響]
+- **Current Value**: [value observed via Chrome MCP]
+- **Recommended Value**: [security-recommended value]
+- **Manual Remediation Steps**:
+  1. [Dashboard URL / screen path]
+  2. [Specific action steps]
+  3. [Save / apply instructions]
+- **Impact**: [Side effects on existing functionality]
 
 ## Remediation Roadmap
 | Priority | Action | Layer | Type |
