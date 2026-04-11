@@ -2,14 +2,23 @@
 
 A comprehensive, full-stack security audit skill for [Claude Code](https://claude.ai/code). Run `/security-audit all` and get an end-to-end vulnerability assessment across your entire stack.
 
-## Supported Stack (v1)
+## Supported Stack
 
 | Layer | Technology | Standard |
 |-------|-----------|----------|
-| **Application** | Next.js (App Router, Server Actions, Middleware) | OWASP Top 10:2025, WSTG |
-| **Infrastructure** | Vercel (env vars, WAF, deployment protection) | Vercel Security Best Practices |
-| **Backend** | Supabase (RLS, Auth, Storage, Edge Functions) | Supabase Hardening Guide |
-| **Mobile** | iOS (Swift, UIKit/SwiftUI) | OWASP MASVS v2 / MASTG |
+| **Web Application** | Next.js (App Router, Server Actions, Middleware) | OWASP Top 10:2025, WSTG |
+| **Infrastructure** | Vercel, Terraform, AWS, GCP, Azure | Vercel Best Practices, CIS Benchmarks |
+| **Backend (BaaS)** | Supabase (RLS, Auth, Storage, Edge Functions) | Supabase Hardening Guide |
+| **Backend (Python)** | Django, FastAPI, Flask | OWASP + Bandit |
+| **Backend (Go)** | Standard library, Gin, Echo | OWASP + govulncheck |
+| **Backend (Ruby)** | Ruby on Rails | OWASP + Brakeman |
+| **Backend (Rust)** | Actix-web, Axum, Rocket | cargo-audit, unsafe analysis |
+| **Mobile (iOS)** | Swift, UIKit/SwiftUI | OWASP MASVS v2 / MASTG |
+| **Mobile (Android)** | Kotlin, Java | OWASP MASVS v2 / MASTG |
+| **Mobile (Flutter)** | Dart | MASVS + Flutter security patterns |
+| **Mobile (React Native)** | JavaScript/TypeScript | MASVS + RN security patterns |
+| **Compliance** | PCI-DSS, HIPAA, SOX, GDPR, CCPA, SOC2, ISO27001 | Regulatory standards |
+| **Advanced** | Supply Chain, Container/K8s, CI/CD, Secrets, LLM/AI | OWASP Top 10 for LLM, CIS |
 | **General Web** | Any web framework | OWASP WSTG |
 
 ## Quick Start
@@ -33,47 +42,101 @@ cp -r claude-code-security-audit-skill/ ~/.claude/skills/security-audit/
 ```
 /security-audit              # Interactive target selection
 /security-audit all          # Full-stack audit (recommended)
+
+# Web
 /security-audit nextjs       # Next.js only
 /security-audit vercel       # Vercel only
 /security-audit supabase     # Supabase only
-/security-audit ios          # iOS only
 /security-audit web          # Next.js + Vercel + Supabase
+
+# Mobile
+/security-audit ios          # iOS only
+/security-audit android      # Android only
+/security-audit flutter      # Flutter only
+/security-audit react-native # React Native only
+/security-audit mobile       # All mobile platforms
+
+# Backend
+/security-audit python       # Python (Django/FastAPI/Flask)
+/security-audit go           # Go
+/security-audit rails        # Ruby on Rails
+/security-audit rust         # Rust
+/security-audit backend      # All backend frameworks
+
+# Infrastructure as Code
+/security-audit terraform    # Terraform
+/security-audit aws          # AWS
+/security-audit gcp          # GCP
+/security-audit azure        # Azure
+/security-audit iac          # All IaC
+
+# Compliance
+/security-audit compliance   # PCI-DSS, HIPAA, SOX, GDPR, CCPA, SOC2, ISO27001
+
+# Advanced Detection
+/security-audit supply-chain # Supply chain security
+/security-audit container    # Container & Kubernetes
+/security-audit cicd         # CI/CD pipeline security
+/security-audit secrets      # Secret scanning
+/security-audit llm          # LLM/AI security
+/security-audit advanced     # All advanced detection
 ```
 
 ## Architecture
 
 ```
 security-audit/
-├── SKILL.md                          # Main skill (loaded into context)
-├── README.md                         # This file
-└── references/                       # Detailed guides (loaded on demand)
-    ├── nextjs-security.md            # Next.js: Server Actions, Middleware, CSP, CVEs
-    ├── vercel-security.md            # Vercel: CLI checks + Chrome MCP dashboard
-    ├── supabase-security.md          # Supabase: RLS SQL queries + Chrome MCP dashboard
-    ├── ios-testing.md                # iOS: MASVS v2 all 8 categories
-    └── web-testing.md                # General web: OWASP WSTG + Top 10:2025
+├── SKILL.md                              # Main skill (loaded into context)
+├── README.md                             # This file
+└── references/                           # Detailed guides (loaded on demand)
+    ├── nextjs-security.md                # Next.js: Server Actions, Middleware, CSP, CVEs
+    ├── vercel-security.md                # Vercel: CLI checks + Chrome MCP dashboard
+    ├── supabase-security.md              # Supabase: RLS SQL queries + Chrome MCP dashboard
+    ├── web-testing.md                    # General web: OWASP WSTG + Top 10:2025
+    ├── ios-testing.md                    # iOS: MASVS v2 all 8 categories
+    ├── android-security.md              # Android: MASVS v2 Kotlin/Java
+    ├── flutter-security.md              # Flutter: Dart security patterns
+    ├── react-native-security.md         # React Native: JS/TS + native bridge
+    ├── python-security.md               # Python: Django/FastAPI/Flask + Bandit
+    ├── go-security.md                   # Go: goroutine safety, crypto, HTTP
+    ├── rails-security.md                # Rails: Brakeman patterns
+    ├── rust-security.md                 # Rust: unsafe, FFI, memory safety
+    ├── terraform-security.md            # Terraform: AWS/GCP/Azure misconfigs
+    ├── aws-security.md                  # AWS: CIS Benchmark, Well-Architected
+    ├── gcp-security.md                  # GCP: CIS Benchmark, Security Command Center
+    ├── azure-security.md                # Azure: CIS Benchmark, Defender for Cloud
+    ├── compliance-financial.md          # PCI-DSS v4.0, HIPAA, SOX
+    ├── compliance-privacy.md            # GDPR, CCPA, SOC 2, ISO 27001
+    ├── supply-chain-security.md         # SBOM, dependency provenance, typosquatting
+    ├── container-security.md            # Dockerfile, Kubernetes RBAC, pod security
+    ├── cicd-security.md                 # GitHub Actions, GitLab CI, Vercel builds
+    ├── secret-scanning.md               # Git history, build artifacts, rotation
+    └── llm-security.md                  # OWASP Top 10 for LLM, MCP, RAG security
 ```
 
 ### Design Principles
 
-- **Progressive Disclosure** — SKILL.md stays under 160 lines. Detailed grep patterns and SQL queries live in `references/`, loaded only when needed. ([Anthropic best practice](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices))
+- **Progressive Disclosure** — SKILL.md stays concise. Detailed grep patterns, SQL queries, and CLI commands live in `references/`, loaded only when needed. ([Anthropic best practice](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices))
 - **Evidence-First** — Every finding includes file path, line number, and a concrete remediation. Inspired by [Trail of Bits skills](https://github.com/trailofbits/skills).
-- **CLI + Chrome MCP** — Automate what CLI/API can reach; use Chrome DevTools MCP for dashboard-only settings (Vercel Security, Supabase Auth config).
+- **CLI + Chrome MCP** — Automate what CLI/API can reach; use Chrome DevTools MCP for dashboard-only settings.
+- **Standards-Based** — All checks map to established standards (OWASP, CIS, PCI-DSS, GDPR, etc.).
 
 ## Audit Phases
 
 | Phase | Target | Method |
 |-------|--------|--------|
 | 1. Reconnaissance | Project structure | Glob, Read |
-| 2. Next.js Audit | Server Actions, Middleware, CSP, env vars | Grep, Bash |
-| 3. Vercel Audit | Env vars, WAF, deployment protection | CLI, Chrome MCP |
-| 4. Supabase Audit | RLS, auth config, SECURITY DEFINER funcs | SQL, CLI, Chrome MCP |
-| 5. iOS Audit | Keychain, ATS, biometrics, WebView | Grep, Bash |
-| 6. Cross-Layer | Auth flow, token lifecycle, data protection | Analysis |
+| 2. Web Application | Next.js, general web | Grep, Bash |
+| 3. Infrastructure | Vercel, Supabase, Terraform, AWS, GCP, Azure | CLI, Chrome MCP, Grep |
+| 4. Backend | Python, Go, Rails, Rust | Grep, Bash |
+| 5. Mobile | iOS, Android, Flutter, React Native | Grep, Bash |
+| 6. Compliance | PCI-DSS, HIPAA, GDPR, SOC2, ISO27001 | Grep, Analysis |
+| 7. Advanced | Supply chain, containers, CI/CD, secrets, LLM | Grep, Bash |
+| 8. Cross-Layer | Auth flow, token lifecycle, data protection | Analysis |
 
 ## Roadmap
 
-### v1.0 (Current)
+### v1.0
 - [x] Next.js (App Router, Server Actions, Middleware, CSP)
 - [x] Vercel (env vars, WAF, deployment protection, security headers)
 - [x] Supabase (RLS, Auth, Storage, Edge Functions, Splinter lint)
@@ -82,40 +145,42 @@ security-audit/
 - [x] Chrome MCP dashboard inspection
 
 ### v1.1 — Mobile Expansion
-- [ ] Android (MASVS v2 / MASTG — Kotlin/Java)
-- [ ] Flutter (Dart security patterns, platform channel security)
-- [ ] Swift (macOS/watchOS/tvOS beyond iOS)
-- [ ] React Native security patterns
+- [x] Android (MASVS v2 / MASTG — Kotlin/Java)
+- [x] Flutter (Dart security patterns, platform channel security)
+- [x] React Native security patterns
 
 ### v1.2 — Backend Expansion
-- [ ] Python (Django, FastAPI, Flask — OWASP + Bandit patterns)
-- [ ] Go (common vulnerability patterns, goroutine safety)
-- [ ] Ruby on Rails (Brakeman patterns)
-- [ ] Rust (unsafe blocks, memory safety audit)
+- [x] Python (Django, FastAPI, Flask — OWASP + Bandit patterns)
+- [x] Go (common vulnerability patterns, goroutine safety)
+- [x] Ruby on Rails (Brakeman patterns)
+- [x] Rust (unsafe blocks, memory safety audit)
 
 ### v1.3 — Infrastructure as Code
-- [ ] Terraform (AWS/GCP/Azure misconfigurations)
-- [ ] AWS Well-Architected Framework (Security Pillar)
-  - IAM least privilege
-  - Encryption at rest/in transit
-  - Network segmentation (VPC, Security Groups)
-  - Logging & monitoring (CloudTrail, GuardDuty)
-- [ ] GCP Security Best Practices
-- [ ] Azure Security Benchmark
+- [x] Terraform (AWS/GCP/Azure misconfigurations)
+- [x] AWS Well-Architected Framework (Security Pillar)
+- [x] GCP Security Best Practices
+- [x] Azure Security Benchmark
 
 ### v1.4 — Compliance & Regulatory
-- [ ] Financial-grade security (PCI-DSS, SOX compliance)
-- [ ] HIPAA (healthcare data protection)
-- [ ] GDPR / CCPA (privacy compliance)
-- [ ] SOC 2 Type II controls mapping
-- [ ] ISO 27001 controls verification
+- [x] Financial-grade security (PCI-DSS v4.0, SOX compliance)
+- [x] HIPAA (healthcare data protection)
+- [x] GDPR / CCPA (privacy compliance)
+- [x] SOC 2 Type II controls mapping
+- [x] ISO 27001 controls verification
 
 ### v1.5 — Advanced Detection
-- [ ] Supply chain security (SBOM, dependency provenance)
-- [ ] Container security (Dockerfile, Kubernetes RBAC)
-- [ ] CI/CD pipeline security (GitHub Actions, Vercel builds)
-- [ ] Secret scanning (git history, build artifacts)
-- [ ] LLM/AI security (OWASP Top 10 for LLM)
+- [x] Supply chain security (SBOM, dependency provenance)
+- [x] Container security (Dockerfile, Kubernetes RBAC)
+- [x] CI/CD pipeline security (GitHub Actions, Vercel builds)
+- [x] Secret scanning (git history, build artifacts)
+- [x] LLM/AI security (OWASP Top 10 for LLM)
+
+### v2.0 — Next Generation (Planned)
+- [ ] Auto-fix mode (generate PRs with remediation)
+- [ ] Severity scoring with CVSS v4.0
+- [ ] Custom rule engine (user-defined detection patterns)
+- [ ] Integration with external scanners (Semgrep, CodeQL)
+- [ ] Continuous monitoring mode (watch for new vulnerabilities)
 
 ## References
 
@@ -123,6 +188,9 @@ security-audit/
 - [OWASP WSTG](https://owasp.org/www-project-web-security-testing-guide/)
 - [OWASP MASVS v2](https://mas.owasp.org/MASVS/)
 - [OWASP MASTG](https://mas.owasp.org/MASTG/)
+- [OWASP Top 10 for LLM](https://genai.owasp.org/)
+- [CIS Benchmarks](https://www.cisecurity.org/cis-benchmarks)
+- [PCI-DSS v4.0](https://www.pcisecuritystandards.org/)
 - [Trail of Bits Security Skills](https://github.com/trailofbits/skills)
 - [Anthropic Skill Best Practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
 - [AWS Well-Architected Security Pillar](https://docs.aws.amazon.com/wellarchitected/latest/security-pillar/)
