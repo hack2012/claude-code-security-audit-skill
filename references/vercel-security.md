@@ -65,11 +65,17 @@ cat vercel.json 2>/dev/null | jq '.public'
 | `Referrer-Policy` | `strict-origin-when-cross-origin` | 情報漏洩 |
 | `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | ブラウザ機能悪用 |
 
-## Chrome MCP によるダッシュボード検査
+## Chrome MCP Dashboard Inspection
 
-CLI では確認できない設定項目を Chrome MCP で検査する。
+Dashboard-only settings that CLI cannot access. **Must run in main context** (not subagents).
 
-### URL パターン
+### Prerequisites
+
+1. Chrome is running and accessible by Chrome DevTools MCP
+2. User is logged in to Vercel Dashboard
+3. If not logged in, skip this section and note "Not Inspected — login required"
+
+### URL Patterns
 
 ```
 https://vercel.com/{team}/{project}/settings/deployment-protection
@@ -81,55 +87,68 @@ https://vercel.com/{team}/{project}/settings/functions
 https://vercel.com/{team}/{project}/settings/git
 ```
 
-### Deployment Protection 検査
+### Step-by-Step Execution
+
+#### 1. Deployment Protection
 
 ```
-navigate_page → /settings/deployment-protection
-take_screenshot → 証跡記録
-evaluate_script → トグル状態・保護スコープを抽出
+mcp__chrome-devtools__navigate_page(url: "https://vercel.com/{team}/{project}/settings/deployment-protection")
+mcp__chrome-devtools__take_screenshot()  → capture evidence
+mcp__chrome-devtools__take_snapshot()    → extract accessibility tree for setting values
 ```
 
-**確認項目**:
-- Protection Scope: 「All Deployments」が推奨
-- Vercel Authentication: 有効か
-- Password Protection: Preview に設定されているか
-- Trusted IPs: 適切に制限されているか
+**Checks**:
+| Setting | Recommended | Remediation if Missing |
+|---------|-------------|----------------------|
+| Protection Scope | All Deployments | Dashboard → Deployment Protection → select "All Deployments" |
+| Vercel Authentication | Enabled | Dashboard → Deployment Protection → toggle "Vercel Authentication" ON |
+| Password Protection | Enabled for Preview | Dashboard → Deployment Protection → set password for Preview |
+| Trusted IPs | Restricted to known IPs | Dashboard → Deployment Protection → add IP allowlist |
 
-### Security Settings 検査
-
-```
-navigate_page → /settings/security
-take_screenshot → 証跡記録
-```
-
-**確認項目**:
-- Attack Challenge Mode: DDoS 攻撃時に有効化可能か
-- Build Logs and Source Protection: 有効（`/_src`, `/_logs` を非公開）
-- Git Fork Protection: 有効（fork PR からの環境変数漏洩防止）
-- Deployment Retention Policy: 適切な期間
-
-### Firewall (WAF) 検査
+#### 2. Security Settings
 
 ```
-navigate_page → /firewall
-take_screenshot → 証跡記録
+mcp__chrome-devtools__navigate_page(url: "https://vercel.com/{team}/{project}/settings/security")
+mcp__chrome-devtools__take_screenshot()  → capture evidence
+mcp__chrome-devtools__take_snapshot()    → extract setting values
 ```
 
-**確認項目**:
-- Custom Rules の存在（認証エンドポイントのレート制限等）
-- OWASP Managed Rulesets: 有効か
-- IP Blocking: 既知の悪意ある IP がブロックされているか
+**Checks**:
+| Setting | Recommended | Remediation if Missing |
+|---------|-------------|----------------------|
+| Attack Challenge Mode | Available | Dashboard → Security → verify toggle is accessible |
+| Build Logs and Source Protection | Enabled | Dashboard → Security → toggle ON (hides `/_src`, `/_logs`) |
+| Git Fork Protection | Enabled | Dashboard → Security → toggle ON (prevents env var leak from fork PRs) |
+| Deployment Retention | Configured | Dashboard → Security → set appropriate retention period |
 
-### Git Settings 検査
+#### 3. Firewall (WAF)
 
 ```
-navigate_page → /settings/git
-take_screenshot → 証跡記録
+mcp__chrome-devtools__navigate_page(url: "https://vercel.com/{team}/{project}/firewall")
+mcp__chrome-devtools__take_screenshot()  → capture evidence
+mcp__chrome-devtools__take_snapshot()    → extract rule list
 ```
 
-**確認項目**:
-- Deploy Hooks: 不要な hook が公開されていないか（URL を知れば誰でもデプロイ可能）
-- Require Verified Commits: 有効か（GitHub のみ）
+**Checks**:
+| Setting | Recommended | Remediation if Missing |
+|---------|-------------|----------------------|
+| Custom Rules | Rate limit on auth endpoints | Dashboard → Firewall → Add Rule → rate limit `/api/auth/*` |
+| OWASP Managed Rulesets | Enabled | Dashboard → Firewall → Managed Rulesets → enable OWASP |
+| IP Blocking | Block known malicious IPs | Dashboard → Firewall → IP Blocking → add rules |
+
+#### 4. Git Settings
+
+```
+mcp__chrome-devtools__navigate_page(url: "https://vercel.com/{team}/{project}/settings/git")
+mcp__chrome-devtools__take_screenshot()  → capture evidence
+mcp__chrome-devtools__take_snapshot()    → extract setting values
+```
+
+**Checks**:
+| Setting | Recommended | Remediation if Missing |
+|---------|-------------|----------------------|
+| Deploy Hooks | No unnecessary hooks exposed | Dashboard → Git → remove unused deploy hooks |
+| Require Verified Commits | Enabled (GitHub only) | Dashboard → Git → toggle ON |
 
 ## よくある設定ミス
 

@@ -33,6 +33,50 @@ When evaluating findings, reject these false-positive rationalizations:
 - **Progressive Disclosure**: Scan high-risk areas first, drill down incrementally
 - **CLI + Chrome MCP**: Automate what CLI/API can reach; use Chrome MCP for dashboard-only settings
 
+## Prerequisites
+
+### Chrome MCP Dashboard Inspection
+
+Chrome MCP inspection requires a browser with active login sessions. Before running targets that include dashboard checks (`vercel`, `supabase`, `web`, `all`):
+
+1. Ensure Chrome is running and accessible by Chrome DevTools MCP
+2. Log in to the relevant dashboards:
+   - **Vercel**: `https://vercel.com/dashboard`
+   - **Supabase**: `https://supabase.com/dashboard`
+3. If not logged in, the audit will **skip dashboard checks** and note them as "Not Inspected — login required" in the report
+
+If Chrome MCP is unavailable, the audit proceeds with CLI/code-only checks and flags skipped dashboard items.
+
+## Execution Model
+
+The audit runs in two stages to work around subagent tool limitations:
+
+### Stage 1: Static Analysis (Parallelizable via Subagents)
+
+Phases 1-8 code/config checks use **Grep, Glob, Bash, Read** — tools available to all agent types. These can be parallelized across multiple subagents:
+
+```
+[Main Context] Orchestrator
+  ├── [Subagent A] Web Application Audit (Grep, Bash)
+  ├── [Subagent B] Backend Audit (Grep, Bash)
+  ├── [Subagent C] Mobile Audit (Grep, Bash)
+  ├── [Subagent D] IaC / Compliance / Advanced (Grep, Bash)
+  └── [Main Context] Cross-Layer Analysis (synthesize subagent results)
+```
+
+### Stage 2: Dashboard Inspection (Main Context Only)
+
+Chrome MCP tools (`mcp__chrome-devtools__*`) are **only available in the main context**, not in subagents. Dashboard inspection MUST run in the main orchestrator:
+
+```
+[Main Context] Chrome MCP Inspection
+  ├── Navigate to Vercel Dashboard → take_screenshot → inspect settings
+  ├── Navigate to Supabase Dashboard → take_screenshot → inspect settings
+  └── Compile dashboard findings with manual remediation steps
+```
+
+**Important**: Never delegate Chrome MCP checks to subagents — they will silently skip them. The main orchestrator must execute all `mcp__chrome-devtools__*` calls directly.
+
 ## Execution Rules
 
 ### Report Generation
