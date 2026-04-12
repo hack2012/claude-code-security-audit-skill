@@ -1,365 +1,365 @@
 # Rust Security Testing Reference
 
-Rust 固有の脆弱性パターンと検査ガイド。unsafe ブロック、FFI 境界、Web フレームワーク対応。
+Vulnerability patterns and testing guide specific to Rust. Covers unsafe blocks, FFI boundaries, and web framework support.
 
 ## Unsafe Code
 
-### リスク
+### Risk
 
-`unsafe` ブロック内ではコンパイラのメモリ安全性保証がバイパスされる。use-after-free、バッファオーバーフロー、未定義動作が発生する可能性がある。
+Within `unsafe` blocks, the compiler's memory safety guarantees are bypassed. Use-after-free, buffer overflows, and undefined behavior can occur.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# unsafe ブロックの全箇所
+# All locations of unsafe blocks
 grep -rn --include='*.rs' 'unsafe\s*{' . | grep -v target | grep -v vendor
 
-# unsafe fn の定義
+# unsafe fn definitions
 grep -rn --include='*.rs' 'unsafe\s*fn' . | grep -v target | grep -v vendor
 
-# unsafe impl（Send / Sync の手動実装）
+# unsafe impl (manual implementation of Send / Sync)
 grep -rn --include='*.rs' 'unsafe\s*impl' . | grep -v target | grep -v vendor
 
-# raw pointer の使用
+# Usage of raw pointers
 grep -rn --include='*.rs' -E '(\*const\s|\*mut\s|as\s+\*const|as\s+\*mut)' . | grep -v target | grep -v vendor
 
-# transmute（型の強制変換、非常に危険）
+# transmute (forced type conversion, extremely dangerous)
 grep -rn --include='*.rs' 'transmute' . | grep -v target | grep -v vendor
 
 # ptr::read / ptr::write
 grep -rn --include='*.rs' -E '(ptr::(read|write|copy|swap|drop_in_place))' . | grep -v target | grep -v vendor
 
-# SAFETY コメントの確認（unsafe の正当性説明）
+# Verify SAFETY comments (justification for unsafe usage)
 grep -rn --include='*.rs' -B1 'unsafe' . | grep -i 'SAFETY' | grep -v target
 ```
 
 ## FFI Security
 
-### リスク
+### Risk
 
-`extern "C"` による C 言語との相互運用は、メモリ安全性を Rust の外に移す。NULL ポインタ、バッファオーバーフロー、メモリリークが発生しうる。
+Interoperation with C via `extern "C"` moves memory safety outside of Rust. NULL pointers, buffer overflows, and memory leaks can occur.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# extern "C" ブロック
+# extern "C" blocks
 grep -rn --include='*.rs' 'extern\s*"C"' . | grep -v target | grep -v vendor
 
-# FFI 関数の呼び出し
+# FFI function calls
 grep -rn --include='*.rs' -E '(CString|CStr|c_char|c_int|c_void)' . | grep -v target | grep -v vendor
 
-# libc クレートの使用
+# Usage of libc crate
 grep -rn --include='*.rs' 'libc::' . | grep -v target | grep -v vendor
 
-# bindgen 生成コードの確認
+# Verify bindgen generated code
 grep -rn 'bindgen' Cargo.toml 2>/dev/null
 
-# FFI 境界での NULL チェック
+# NULL checks at FFI boundaries
 grep -rn --include='*.rs' -E '(is_null|NonNull|as_ref\(\))' . | grep -v target | grep -v vendor
 
-# Box::from_raw（所有権の移転、二重解放リスク）
+# Box::from_raw (ownership transfer, double-free risk)
 grep -rn --include='*.rs' 'Box::from_raw' . | grep -v target | grep -v vendor
 
-# forget（メモリリーク）
+# forget (memory leak)
 grep -rn --include='*.rs' 'mem::forget\|std::mem::forget' . | grep -v target | grep -v vendor
 ```
 
 ## Memory Safety
 
-### リスク
+### Risk
 
-unsafe コード内での use-after-free、ダングリングポインタ、バッファオーバーフローは Rust のコンパイラでは検出されない。
+Use-after-free, dangling pointers, and buffer overflows within unsafe code are not detected by the Rust compiler.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# slice::from_raw_parts（バッファオーバーフローリスク）
+# slice::from_raw_parts (buffer overflow risk)
 grep -rn --include='*.rs' 'from_raw_parts' . | grep -v target | grep -v vendor
 
-# ManuallyDrop（手動メモリ管理）
+# ManuallyDrop (manual memory management)
 grep -rn --include='*.rs' 'ManuallyDrop' . | grep -v target | grep -v vendor
 
-# MaybeUninit（未初期化メモリ）
+# MaybeUninit (uninitialized memory)
 grep -rn --include='*.rs' 'MaybeUninit' . | grep -v target | grep -v vendor
 
-# Pin の使用（自己参照構造体の安全性）
+# Usage of Pin (safety of self-referential structs)
 grep -rn --include='*.rs' -E '(Pin<|pin_mut!|Unpin)' . | grep -v target | grep -v vendor
 
-# alloc / dealloc の手動呼び出し
+# Manual alloc / dealloc calls
 grep -rn --include='*.rs' -E '(alloc::(alloc|dealloc|realloc)|GlobalAlloc)' . | grep -v target | grep -v vendor
 
-# offset / add / sub（ポインタ算術）
+# offset / add / sub (pointer arithmetic)
 grep -rn --include='*.rs' -E '\.(offset|add|sub)\(' . | grep -v target | grep -v vendor | grep -i ptr
 ```
 
 ## Cryptography
 
-### リスク
+### Risk
 
-暗号処理の実装ミスは致命的なセキュリティホールになる。定数時間比較の欠如、弱いアルゴリズムの使用、不適切な乱数生成が主なリスク。
+Implementation mistakes in cryptographic processing lead to critical security holes. The main risks are lack of constant-time comparison, usage of weak algorithms, and improper random number generation.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# 暗号ライブラリの使用確認
+# Verify usage of cryptographic libraries
 grep -rn -E '(ring|rustls|RustCrypto|aes|sha2|hmac|argon2|bcrypt|chacha20)' Cargo.toml 2>/dev/null
 
-# rand クレートの使用（OsRng / ThreadRng の確認）
+# Usage of rand crate (verify OsRng / ThreadRng)
 grep -rn --include='*.rs' -E '(OsRng|ThreadRng|StdRng|thread_rng|rand::)' . | grep -v target | grep -v vendor
 
-# 固定シードの乱数生成（テスト以外では危険）
+# Fixed-seed random number generation (dangerous outside tests)
 grep -rn --include='*.rs' 'SeedableRng\|seed_from_u64\|from_seed' . | grep -v target | grep -v vendor | grep -v test
 
-# 定数時間比較（timing attack 対策）
+# Constant-time comparison (timing attack prevention)
 grep -rn --include='*.rs' -E '(constant_time|ct_eq|subtle::)' . | grep -v target | grep -v vendor
 
-# MD5 / SHA1 の使用（弱いハッシュ）
+# Usage of MD5 / SHA1 (weak hashes)
 grep -rn --include='*.rs' -E '(md5|sha1|Md5|Sha1)[^a-zA-Z]' . | grep -v target | grep -v vendor
 
-# ハードコードされた暗号鍵
+# Hardcoded cryptographic keys
 grep -rn --include='*.rs' -E '(b"|&\[)[0-9a-fA-Fx, ]+\]' . | grep -v target | grep -v vendor | grep -i key
 ```
 
 ## Input Validation
 
-### リスク
+### Risk
 
-整数オーバーフロー（release ビルドではラップアラウンド）、`unwrap()` による panic、バリデーション不足が主なリスク。
+The main risks are integer overflow (wraps around in release builds), panic from `unwrap()`, and insufficient validation.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# unwrap の使用（本番コードでは panic リスク）
+# Usage of unwrap (panic risk in production code)
 grep -rn --include='*.rs' '\.unwrap()' . | grep -v target | grep -v vendor | grep -v test
 
-# expect の使用（本番コードでの適切性を確認）
+# Usage of expect (verify appropriateness in production code)
 grep -rn --include='*.rs' '\.expect(' . | grep -v target | grep -v vendor | grep -v test
 
-# 整数演算（オーバーフローリスク）
+# Integer arithmetic (overflow risk)
 grep -rn --include='*.rs' -E '(checked_add|checked_sub|checked_mul|saturating_|overflowing_|wrapping_)' . | grep -v target | grep -v vendor
 
-# as によるキャスト（精度損失、符号変換）
+# Casts via as (precision loss, sign conversion)
 grep -rn --include='*.rs' -E '\bas\s+(u8|u16|u32|i8|i16|i32|usize|isize)\b' . | grep -v target | grep -v vendor
 
-# 数値パース時のエラーハンドリング
+# Error handling during numeric parsing
 grep -rn --include='*.rs' -E '\.parse::<(u|i|f)\w+>\(\)' . | grep -v target | grep -v vendor
 
-# clippy の整数キャスト警告を有効化
+# Enable clippy integer cast warnings
 grep -rn 'clippy::cast' . --include='*.rs' | grep -v target
 ```
 
 ## Error Handling
 
-### リスク
+### Risk
 
-`unwrap()` / `expect()` は panic を引き起こし、サービス停止（DoS）につながる。本番コードでは `Result` / `Option` の適切な処理が必須。
+`unwrap()` / `expect()` cause panics that lead to service outage (DoS). Proper handling of `Result` / `Option` is required in production code.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# unwrap の使用回数
+# Count of unwrap usage
 grep -c --include='*.rs' -r '\.unwrap()' . 2>/dev/null | grep -v ':0$' | grep -v target | sort -t: -k2 -rn | head -10
 
-# panic! マクロ
+# panic! macro
 grep -rn --include='*.rs' 'panic!\(' . | grep -v target | grep -v vendor | grep -v test
 
-# todo! / unimplemented!（本番コードに残存）
+# todo! / unimplemented! (remaining in production code)
 grep -rn --include='*.rs' -E '(todo!|unimplemented!)' . | grep -v target | grep -v vendor
 
-# unreachable! の使用（到達可能な場合は UB）
+# Usage of unreachable! (UB if actually reachable)
 grep -rn --include='*.rs' 'unreachable!' . | grep -v target | grep -v vendor
 
-# エラーメッセージに機密情報
+# Sensitive information in error messages
 grep -rn --include='*.rs' -E '(eprintln!|tracing::(error|warn)).*password\|secret\|token\|key' . | grep -v target
 ```
 
 ## Web Frameworks (Actix-web / Axum / Rocket)
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# フレームワークの特定
+# Identify framework
 grep -E '(actix-web|axum|rocket|warp|tide)' Cargo.toml 2>/dev/null
 
-# Actix-web: エクストラクタのバリデーション
+# Actix-web: Extractor validation
 grep -rn --include='*.rs' -E '(web::(Json|Query|Path|Form)|HttpRequest)' . | grep -v target | grep -v vendor
 
-# Axum: エクストラクタの使用
+# Axum: Extractor usage
 grep -rn --include='*.rs' -E '(axum::extract|Extension|State<)' . | grep -v target | grep -v vendor
 
-# CORS 設定
+# CORS settings
 grep -rn --include='*.rs' -E '(Cors|cors|CorsLayer|AllowOrigin)' . | grep -v target | grep -v vendor
 
-# ワイルドカード CORS（危険）
+# Wildcard CORS (dangerous)
 grep -rn --include='*.rs' -E '(permissive|any\(\)|allow_any_origin)' . | grep -v target | grep -v vendor
 
-# 認証ミドルウェア
+# Authentication middleware
 grep -rn --include='*.rs' -E '(middleware|guard|FromRequest|from_request)' . | grep -v target | grep -v vendor | grep -i auth
 
-# レート制限
+# Rate limiting
 grep -rn --include='*.rs' -E '(rate_limit|throttle|governor|RateLimiter)' . | grep -v target | grep -v vendor
 
-# セキュリティヘッダーの設定
+# Security header settings
 grep -rn --include='*.rs' -E '(X-Frame-Options|Content-Security-Policy|Strict-Transport|helmet)' . | grep -v target
 ```
 
 ## SQL (sqlx / diesel)
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# sqlx の使用確認
+# Verify sqlx usage
 grep 'sqlx' Cargo.toml 2>/dev/null
 
-# diesel の使用確認
+# Verify diesel usage
 grep 'diesel' Cargo.toml 2>/dev/null
 
-# sqlx のコンパイル時検証クエリ（安全）
+# sqlx compile-time verified queries (safe)
 grep -rn --include='*.rs' -E '(sqlx::query!|query_as!)' . | grep -v target | grep -v vendor
 
-# sqlx の動的クエリ（SQL Injection リスク）
+# sqlx dynamic queries (SQL Injection risk)
 grep -rn --include='*.rs' -E '(sqlx::query\(|QueryBuilder)' . | grep -v target | grep -v vendor
 
-# format! で SQL 構築（危険）
+# SQL construction via format! (dangerous)
 grep -rn --include='*.rs' 'format!.*SELECT\|format!.*INSERT\|format!.*UPDATE\|format!.*DELETE' . | grep -v target | grep -v vendor
 
-# diesel の raw SQL
+# diesel raw SQL
 grep -rn --include='*.rs' -E '(sql_query|diesel::sql_query)' . | grep -v target | grep -v vendor
 ```
 
 ## Dependency Security
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# cargo-audit による脆弱性チェック
+# Vulnerability check via cargo-audit
 cargo audit 2>/dev/null || echo "cargo-audit not installed"
 
-# cargo-deny による包括的チェック
+# Comprehensive check via cargo-deny
 cargo deny check 2>/dev/null || echo "cargo-deny not installed"
 
-# Cargo.lock の存在確認（バイナリプロジェクトでは必須）
+# Verify Cargo.lock exists (required for binary projects)
 ls -la Cargo.lock 2>/dev/null || echo "Cargo.lock not found"
 
-# 依存関係の一覧
+# List dependencies
 cargo tree --depth 1 2>/dev/null | head -30
 
-# yanked クレートの確認
+# Check for yanked crates
 cargo audit --deny yanked 2>/dev/null
 
-# 安全でないクレートの使用（cargo-geiger）
+# Usage of unsafe crates (cargo-geiger)
 cargo geiger 2>/dev/null || echo "cargo-geiger not installed"
 ```
 
 ## Concurrency Safety
 
-### リスク
+### Risk
 
-unsafe コード内での `Send` / `Sync` の不正な実装はデータ競合を引き起こす。コンパイラの保護をバイパスしているため、検出が困難。
+Incorrect implementation of `Send` / `Sync` within unsafe code causes data races. Detection is difficult since compiler protections are bypassed.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# unsafe impl Send / Sync（手動実装は要レビュー）
+# unsafe impl Send / Sync (manual implementation requires review)
 grep -rn --include='*.rs' -E 'unsafe\s+impl\s+(Send|Sync)' . | grep -v target | grep -v vendor
 
-# Arc / Mutex の使用パターン
+# Arc / Mutex usage patterns
 grep -rn --include='*.rs' -E '(Arc<|Mutex<|RwLock<|AtomicBool|AtomicUsize)' . | grep -v target | grep -v vendor
 
-# crossbeam の使用
+# Usage of crossbeam
 grep -rn --include='*.rs' 'crossbeam' . | grep -v target | grep -v vendor
 
-# tokio::spawn での shared state
+# Shared state in tokio::spawn
 grep -rn --include='*.rs' 'tokio::spawn' . | grep -v target | grep -v vendor
 
-# static mut（データ競合リスク、非推奨）
+# static mut (data race risk, deprecated)
 grep -rn --include='*.rs' 'static\s*mut' . | grep -v target | grep -v vendor
 ```
 
 ## Serialization (serde)
 
-### リスク
+### Risk
 
-信頼できないソースからのデシリアライズは、メモリ枯渇（巨大な配列）やロジックバグを引き起こす可能性がある。
+Deserialization from untrusted sources can cause memory exhaustion (huge arrays) and logic bugs.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# serde の使用確認
+# Verify serde usage
 grep 'serde' Cargo.toml 2>/dev/null
 
-# Deserialize の導出
+# Derive of Deserialize
 grep -rn --include='*.rs' 'Deserialize' . | grep -v target | grep -v vendor
 
-# カスタム Deserialize の実装（ロジックバグリスク）
+# Custom Deserialize implementation (logic bug risk)
 grep -rn --include='*.rs' "impl.*Deserialize.*for" . | grep -v target | grep -v vendor
 
-# serde_json::from_str / from_slice（入力サイズ制限の確認）
+# serde_json::from_str / from_slice (verify input size limits)
 grep -rn --include='*.rs' -E '(from_str|from_slice|from_reader)\(' . | grep -v target | grep -v vendor | grep -i serde
 
-# #[serde(deny_unknown_fields)]（未知フィールドの拒否）
+# #[serde(deny_unknown_fields)] (reject unknown fields)
 grep -rn --include='*.rs' 'deny_unknown_fields' . | grep -v target | grep -v vendor
 
-# bincode / postcard 等のバイナリフォーマット
+# Binary formats like bincode / postcard
 grep -rn -E '(bincode|postcard|ciborium|rmp-serde)' Cargo.toml 2>/dev/null
 ```
 
 ## File System
 
-### リスク
+### Risk
 
-パストラバーサル（`../` によるディレクトリ脱出）と TOCTOU（Time-of-check-to-time-of-use）が主なリスク。
+The main risks are path traversal (directory escape via `../`) and TOCTOU (Time-of-check-to-time-of-use).
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# ファイルパスにユーザー入力を使用
+# User input used in file paths
 grep -rn --include='*.rs' -E '(Path::new|PathBuf::from)\(' . | grep -v target | grep -v vendor
 
-# ファイル操作
+# File operations
 grep -rn --include='*.rs' -E '(fs::(read|write|remove|create_dir|rename|copy)|File::(open|create))' . | grep -v target | grep -v vendor
 
-# canonicalize によるパス正規化（TOCTOU リスクあり）
+# Path normalization via canonicalize (has TOCTOU risk)
 grep -rn --include='*.rs' 'canonicalize' . | grep -v target | grep -v vendor
 
-# tempfile の使用（安全な一時ファイル）
+# Usage of tempfile (safe temporary files)
 grep -rn --include='*.rs' 'tempfile' . | grep -v target | grep -v vendor
 
-# パスプレフィックスの検証
+# Path prefix validation
 grep -rn --include='*.rs' 'starts_with\|strip_prefix' . | grep -v target | grep -v vendor | grep -i path
 
-# シンボリックリンクの追跡
+# Symbolic link following
 grep -rn --include='*.rs' -E '(symlink_metadata|read_link|follow_links)' . | grep -v target | grep -v vendor
 ```
 
-## unsafe コードの分類
+## Unsafe Code Classification
 
-| パターン | リスクレベル | 説明 |
-|----------|-------------|------|
-| `unsafe { }` ブロック | Medium-High | コンパイラ保護のバイパス |
-| `unsafe fn` | High | 呼び出し側に安全性責任を移転 |
-| `unsafe impl Send/Sync` | Critical | 並行性の安全性を手動保証 |
-| `transmute` | Critical | 任意の型変換、UB のリスク |
-| `from_raw_parts` | High | バッファオーバーフローのリスク |
-| `static mut` | Critical | データ競合、非推奨 |
-| `extern "C"` | High | FFI 境界、メモリ安全性の断絶 |
+| Pattern | Risk Level | Description |
+|---------|------------|-------------|
+| `unsafe { }` block | Medium-High | Bypasses compiler protections |
+| `unsafe fn` | High | Transfers safety responsibility to caller |
+| `unsafe impl Send/Sync` | Critical | Manually guarantees concurrency safety |
+| `transmute` | Critical | Arbitrary type conversion, risk of UB |
+| `from_raw_parts` | High | Buffer overflow risk |
+| `static mut` | Critical | Data race, deprecated |
+| `extern "C"` | High | FFI boundary, memory safety discontinuity |
 
-## Rust セキュリティチェックリスト
+## Rust Security Checklist
 
-- [ ] `unsafe` ブロックが最小限で、各箇所に SAFETY コメントがある
-- [ ] `transmute` の使用が正当化されている
-- [ ] FFI 境界で NULL チェックとバッファサイズ検証がある
-- [ ] `unsafe impl Send/Sync` がデータ競合を起こさないことが証明されている
-- [ ] `static mut` が使用されていない（代替: `OnceLock`, `Atomic*`, `Mutex`）
-- [ ] 暗号処理に `ring` / `RustCrypto` 等の実績あるクレートを使用している
-- [ ] 固定シードの乱数生成がテスト以外で使用されていない
-- [ ] `unwrap()` / `expect()` が本番コードで適切にハンドリングされている
-- [ ] `todo!` / `unimplemented!` が本番コードに残存していない
-- [ ] SQL クエリが `sqlx::query!` マクロまたはパラメータ化されている
-- [ ] CORS がワイルドカードオリジンを許可していない
-- [ ] Web エンドポイントに認証ミドルウェアが設定されている
-- [ ] `cargo audit` で既知脆弱性がゼロ
-- [ ] `Cargo.lock` がリポジトリにコミットされている
-- [ ] 整数演算に `checked_*` / `saturating_*` メソッドを使用している
-- [ ] パストラバーサル対策（プレフィックス検証）が実装されている
-- [ ] serde デシリアライズに入力サイズの制限がある
+- [ ] `unsafe` blocks are minimal and each location has a SAFETY comment
+- [ ] Usage of `transmute` is justified
+- [ ] NULL checks and buffer size validation exist at FFI boundaries
+- [ ] `unsafe impl Send/Sync` is proven not to cause data races
+- [ ] `static mut` is not used (alternatives: `OnceLock`, `Atomic*`, `Mutex`)
+- [ ] Proven crates like `ring` / `RustCrypto` are used for cryptographic processing
+- [ ] Fixed-seed random number generation is not used outside tests
+- [ ] `unwrap()` / `expect()` are properly handled in production code
+- [ ] `todo!` / `unimplemented!` do not remain in production code
+- [ ] SQL queries use `sqlx::query!` macros or are parameterized
+- [ ] CORS does not allow wildcard origins
+- [ ] Authentication middleware is set on web endpoints
+- [ ] Zero known vulnerabilities via `cargo audit`
+- [ ] `Cargo.lock` is committed to the repository
+- [ ] Integer arithmetic uses `checked_*` / `saturating_*` methods
+- [ ] Path traversal prevention (prefix validation) is implemented
+- [ ] serde deserialization has input size limits

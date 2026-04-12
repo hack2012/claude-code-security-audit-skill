@@ -1,332 +1,332 @@
 # Privacy & Security Framework Compliance Reference
 
-プライバシー保護とセキュリティフレームワークに基づくコードレベル検査ガイド。
-GDPR、CCPA、SOC 2 Type II、ISO 27001 の主要要件をカバーする。
+Code-level inspection guide based on privacy protection and security frameworks.
+Covers the major requirements of GDPR, CCPA, SOC 2 Type II, and ISO 27001.
 
 ## GDPR (General Data Protection Regulation)
 
-EU 居住者の個人データを処理するシステムに適用。プライバシー・バイ・デザインの原則に基づく。
+Applies to systems that process personal data of EU residents. Based on the principle of Privacy by Design.
 
-### データ主体の権利（Data Subject Rights）
+### Data Subject Rights
 
-削除権（Right to Erasure）、ポータビリティ権、アクセス権の実装を検査する。
+Inspect implementation of Right to Erasure, Right to Portability, and Right of Access.
 
 ```bash
-# データ削除機能の実装確認
+# Verify data deletion functionality implementation
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(deleteUser|delete.?account|erase|purge|forget.?me|right.?to.?erasure|gdpr.?delete)' .
 
-# データエクスポート / ポータビリティ機能
+# Data export / portability functionality
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(export.?data|download.?data|portability|data.?export|user.?data.?download)' .
 
-# データアクセスリクエスト（SAR: Subject Access Request）
+# Data access requests (SAR: Subject Access Request)
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(subject.?access|data.?access.?request|sar|dsar|get.?my.?data)' .
 
-# 論理削除 vs 物理削除の確認
+# Verify soft delete vs. hard delete
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(soft.?delete|is.?deleted|deleted.?at|paranoid|withDeleted)' .
 ```
 
-### 同意管理（Consent Management）
+### Consent Management
 
-データ処理の同意取得・撤回メカニズムを検査する。
+Inspect consent acquisition and withdrawal mechanisms for data processing.
 
 ```bash
-# 同意フラグ・同意管理の実装
+# Consent flags and consent management implementation
 grep -rn --include='*.{ts,js,py,rb,go,java,tsx,jsx}' \
   -iE '(consent|opt.?in|opt.?out|cookie.?consent|cookie.?banner|accept.?cookies)' .
 
-# 同意のタイムスタンプ記録
+# Consent timestamp recording
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(consent.?date|consent.?timestamp|consented.?at|consent.?version)' .
 
-# 同意なしのトラッキング（違反の可能性）
+# Tracking without consent (potential violation)
 grep -rn --include='*.{ts,js,tsx,jsx,html}' \
   -iE '(gtag|ga\(|analytics|fbq|_paq|hotjar|segment\.track)' . | \
   grep -v node_modules | head -20
 ```
 
-### データ最小化と Privacy by Design
+### Data Minimization and Privacy by Design
 
-不必要なデータ収集の検出、データ保護設計を確認する。
+Detect unnecessary data collection and verify data protection design.
 
 ```bash
-# フォームフィールドの過剰収集（特別カテゴリデータ）
+# Excessive form field collection (special category data)
 grep -rn --include='*.{ts,js,tsx,jsx,html}' \
   -iE '(gender|ethnicity|race|religion|political|sexual|biometric|genetic)' . | \
   grep -iE '(input|field|form|register|signup)'
 
-# データ保持期間の実装
+# Data retention period implementation
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(retention|expiry|expire|ttl|purge.?after|delete.?after|data.?lifecycle)' .
 
-# 匿名化・仮名化の実装
+# Anonymization and pseudonymization implementation
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(anonymize|pseudonymize|de.?identify|tokenize|hash.?pii)' .
 ```
 
-### GDPR コード検出パターンまとめ
+### GDPR Code Detection Patterns Summary
 
-| 検出対象 | パターン | 深刻度 |
-|----------|----------|--------|
-| データ削除機能の欠如 | `deleteUser` 等の不在 | Critical |
-| 同意なしのトラッキング | consent チェックなしの analytics | Critical |
-| 同意タイムスタンプ未記録 | `consentDate` の不在 | High |
-| 論理削除のみ（物理削除なし） | `softDelete` のみ | High |
-| データ保持期間未設定 | `retention` 関連コードの不在 | High |
-| 過剰なデータ収集 | 不要な PII フィールド | Medium |
-| エクスポート機能の欠如 | `exportData` 等の不在 | High |
+| Detection Target | Pattern | Severity |
+|------------------|---------|----------|
+| Missing data deletion functionality | Absence of `deleteUser` etc. | Critical |
+| Tracking without consent | Analytics without consent check | Critical |
+| Consent timestamp not recorded | Absence of `consentDate` | High |
+| Soft delete only (no hard delete) | Only `softDelete` present | High |
+| Data retention period not set | Absence of `retention`-related code | High |
+| Excessive data collection | Unnecessary PII fields | Medium |
+| Missing export functionality | Absence of `exportData` etc. | High |
 
 ---
 
 ## CCPA (California Consumer Privacy Act)
 
-カリフォルニア州居住者の個人情報を扱うシステムに適用。
+Applies to systems that handle personal information of California residents.
 
-### 消費者の権利と Do Not Sell
+### Consumer Rights and Do Not Sell
 
-オプトアウト、データ削除、「Do Not Sell」メカニズムの実装を確認。
+Verify implementation of opt-out, data deletion, and "Do Not Sell" mechanisms.
 
 ```bash
-# オプトアウト / Do Not Sell 機能の実装
+# Opt-out / Do Not Sell functionality implementation
 grep -rn --include='*.{ts,js,py,rb,go,java,tsx,jsx}' \
   -iE '(opt.?out|do.?not.?sell|do.?not.?share|ccpa|privacy.?choice)' .
 
-# データ削除リクエスト機能
+# Data deletion request functionality
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(delete.?request|deletion.?request|ccpa.?delete|consumer.?delete)' .
 
-# サードパーティへのデータ共有
+# Data sharing with third parties
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(share.?data|sell.?data|third.?party|data.?broker|data.?partner)' .
 
-# GPC（Global Privacy Control）ヘッダーの対応
+# GPC (Global Privacy Control) header support
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(globalPrivacyControl|Sec-GPC|gpc.?header|navigator\.globalPrivacyControl)' .
 
-# プライバシーポリシーページ
+# Privacy policy page
 grep -rn --include='*.{ts,js,tsx,jsx,html}' \
   -iE '(privacy.?policy|privacy.?notice|privacy.?settings)' .
 ```
 
-### CCPA コード検出パターンまとめ
+### CCPA Code Detection Patterns Summary
 
-| 検出対象 | パターン | 深刻度 |
-|----------|----------|--------|
-| オプトアウト機能の欠如 | `opt-out` 関連コードの不在 | Critical |
-| 「Do Not Sell」リンクの欠如 | `doNotSell` の不在 | Critical |
-| GPC ヘッダー未対応 | `Sec-GPC` 処理の不在 | High |
-| データ削除機能の欠如 | 削除リクエスト処理の不在 | High |
-| サードパーティ共有の未管理 | 共有先の制御なし | High |
+| Detection Target | Pattern | Severity |
+|------------------|---------|----------|
+| Missing opt-out functionality | Absence of `opt-out`-related code | Critical |
+| Missing "Do Not Sell" link | Absence of `doNotSell` | Critical |
+| GPC header not supported | Absence of `Sec-GPC` handling | High |
+| Missing data deletion functionality | Absence of deletion request handling | High |
+| Unmanaged third-party sharing | No control over sharing destinations | High |
 
 ---
 
 ## SOC 2 Type II
 
-5 つの Trust Services Criteria（TSC）に基づくコードレベルの統制を検査する。
+Inspect code-level controls based on the 5 Trust Services Criteria (TSC).
 
-### Security（セキュリティ）
+### Security
 
 ```bash
-# 認証・認可の実装確認
+# Verify authentication and authorization implementation
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(authenticate|login|signIn|verifyToken|authorize|permission|guard|canActivate)' .
 
-# セッション管理
+# Session management
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(session.?timeout|idle.?timeout|max.?age|expires.?in|token.?expiry)' .
 
-# 入力バリデーション
+# Input validation
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(validate|sanitize|escape|parameterize|prepared.?statement)' .
 ```
 
-### Availability（可用性）
+### Availability
 
 ```bash
-# ヘルスチェック・リトライの実装
+# Health check and retry implementation
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(health.?check|healthCheck|readiness|liveness|retry|circuit.?breaker|fallback)' .
 
-# バックアップ・リストア関連
+# Backup and restore related
 grep -rn --include='*.{ts,js,py,rb,go,java,yaml,yml,json}' \
   -iE '(backup|restore|disaster.?recovery|failover|replication)' .
 ```
 
-### Processing Integrity（処理の完全性）
+### Processing Integrity
 
 ```bash
-# スキーマバリデーション
+# Schema validation
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(schema.?validation|zod|joi|yup|class-validator|marshmallow|pydantic)' .
 
-# トランザクション管理・整合性検証
+# Transaction management and integrity verification
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(transaction|commit|rollback|atomic|checksum|integrity|hmac)' .
 ```
 
-### Confidentiality / Privacy（機密性・プライバシー）
+### Confidentiality / Privacy
 
 ```bash
-# 暗号化・シークレット管理
+# Encryption and secret management
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(encrypt|decrypt|cipher|aes|vault|secret.?manager|aws.?secrets|key.?vault)' . | \
   grep -v node_modules | head -20
 
-# PII フィールドの検出
+# PII field detection
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(email|phone|address|firstName|first_name|lastName|last_name|dateOfBirth|ssn|passport)' . | \
   grep -v node_modules | grep -v '\.test\.' | head -20
 
-# PII のマスキング・リダクション
+# PII masking and redaction
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(mask|redact|encrypt|hash).*(email|phone|name|address|ssn)' .
 ```
 
-### SOC 2 コード検出パターンまとめ
+### SOC 2 Code Detection Patterns Summary
 
-| TSC | 検出対象 | パターン | 深刻度 |
-|-----|----------|----------|--------|
-| Security | 認証の欠如 | `authenticate` 関連の不在 | Critical |
-| Security | 認可の欠如 | `authorize` 関連の不在 | Critical |
-| Security | 入力検証の欠如 | `validate` 関連の不在 | High |
-| Availability | ヘルスチェック未実装 | `healthCheck` の不在 | Medium |
-| Integrity | スキーマ検証の欠如 | `zod`/`joi` 等の不在 | High |
-| Confidentiality | 暗号化未実装 | `encrypt` 関連の不在 | High |
-| Privacy | PII マスキングの欠如 | `mask`/`redact` の不在 | High |
+| TSC | Detection Target | Pattern | Severity |
+|-----|------------------|---------|----------|
+| Security | Missing authentication | Absence of `authenticate`-related code | Critical |
+| Security | Missing authorization | Absence of `authorize`-related code | Critical |
+| Security | Missing input validation | Absence of `validate`-related code | High |
+| Availability | Missing health check | Absence of `healthCheck` | Medium |
+| Integrity | Missing schema validation | Absence of `zod`/`joi` etc. | High |
+| Confidentiality | Missing encryption | Absence of `encrypt`-related code | High |
+| Privacy | Missing PII masking | Absence of `mask`/`redact` | High |
 
 ---
 
 ## ISO 27001
 
-情報セキュリティマネジメントシステム（ISMS）の Annex A コントロールに基づくコードレベル検査。
+Code-level inspection based on the Annex A controls of the Information Security Management System (ISMS).
 
-### A.8 資産管理 / A.9 アクセス制御
+### A.8 Asset Management / A.9 Access Control
 
 ```bash
-# データ分類レベルの実装
+# Data classification level implementation
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(data.?classification|security.?level|confidential|restricted|top.?secret)' .
 
-# アクセス制御ポリシー・最小権限
+# Access control policies and least privilege
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(access.?control|acl|rbac|abac|policy.?engine|least.?privilege|scoped.?token)' .
 
-# 特権アクセスの管理
+# Privileged access management
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(privileged|sudo|root|admin.?access|elevated|superuser|impersonate)' .
 
-# パスワードハッシュの実装
+# Password hashing implementation
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(bcrypt|scrypt|argon2|pbkdf2|password.?hash|password.?policy)' .
 ```
 
-### A.10 暗号（Cryptography）
+### A.10 Cryptography
 
 ```bash
-# 暗号アルゴリズムの使用確認
+# Verify cryptographic algorithm usage
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(aes|rsa|ecdsa|ed25519|chacha20|sha256|sha512)' . | grep -v node_modules
 
-# 弱い暗号アルゴリズムの検出
+# Detect weak cryptographic algorithms
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(md5|sha1[^0-9]|des[^a-z]|rc4|blowfish|createCipher\b)' . | grep -v node_modules
 
-# 暗号鍵のハードコード検出
+# Detect hardcoded cryptographic keys
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(PRIVATE_KEY|SECRET_KEY|ENCRYPTION_KEY|API_KEY)\s*[:=]\s*["\x27]' . | \
   grep -v node_modules | grep -v '\.env\.example'
 
-# 鍵管理サービスの使用
+# Key management service usage
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(kms|key.?management|key.?rotation|key.?vault|hsm)' .
 ```
 
-### A.12 運用セキュリティ / A.14 システム開発セキュリティ
+### A.12 Operational Security / A.14 System Development Security
 
 ```bash
-# 構造化ロギングの実装
+# Structured logging implementation
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(winston|pino|bunyan|log4j|logback|slog|zerolog|structlog)' .
 
-# セキュリティイベントのログ
+# Security event logging
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(security.?event|auth.?log|login.?log|access.?denied|unauthorized)' .
 
-# ファイルアップロードの検証
+# File upload verification
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(file.?type|mime.?type|magic.?bytes|virus.?scan|malware.?scan|clamav)' .
 
-# CI/CD セキュリティスキャン
+# CI/CD security scanning
 cat .github/workflows/*.yml 2>/dev/null | \
   grep -iE '(npm audit|snyk|dependabot|codeql|semgrep|sonarqube|trivy)'
 ```
 
-### ISO 27001 コード検出パターンまとめ
+### ISO 27001 Code Detection Patterns Summary
 
-| Annex A | 検出対象 | パターン | 深刻度 |
-|---------|----------|----------|--------|
-| A.8 | データ分類の欠如 | `classification` の不在 | Medium |
-| A.9 | アクセス制御の欠如 | `rbac`/`acl` の不在 | High |
-| A.9 | 特権アクセスの未管理 | `admin` のハードコード | High |
-| A.10 | 弱い暗号アルゴリズム | `MD5`/`SHA1`/`DES` | High |
-| A.10 | 暗号鍵のハードコード | `SECRET_KEY = "..."` | Critical |
-| A.10 | 鍵管理の欠如 | `KMS` 関連の不在 | High |
-| A.12 | 構造化ログの欠如 | logging ライブラリの不在 | Medium |
-| A.14 | セキュリティスキャンの欠如 | SAST/DAST の不在 | High |
+| Annex A | Detection Target | Pattern | Severity |
+|---------|------------------|---------|----------|
+| A.8 | Missing data classification | Absence of `classification` | Medium |
+| A.9 | Missing access control | Absence of `rbac`/`acl` | High |
+| A.9 | Unmanaged privileged access | Hardcoded `admin` | High |
+| A.10 | Weak cryptographic algorithms | `MD5`/`SHA1`/`DES` | High |
+| A.10 | Hardcoded cryptographic keys | `SECRET_KEY = "..."` | Critical |
+| A.10 | Missing key management | Absence of `KMS`-related code | High |
+| A.12 | Missing structured logging | Absence of logging libraries | Medium |
+| A.14 | Missing security scanning | Absence of SAST/DAST | High |
 
 ---
 
-## 統合コンプライアンスチェックリスト
+## Integrated Compliance Checklist
 
-### GDPR チェックリスト
+### GDPR Checklist
 
-- [ ] データ削除機能（Right to Erasure）が実装されている
-- [ ] データエクスポート機能（Right to Portability）が実装されている
-- [ ] データアクセスリクエスト（SAR）の処理が実装されている
-- [ ] 同意取得メカニズムが実装されている
-- [ ] 同意の撤回が可能である
-- [ ] 同意取得のタイムスタンプが記録されている
-- [ ] 同意前にトラッキングが開始されていない
-- [ ] データ保持期間が定義・実装されている
-- [ ] データ最小化の原則に従い、必要最小限のデータのみ収集している
-- [ ] PII の匿名化・仮名化が適切に実装されている
+- [ ] Data deletion functionality (Right to Erasure) is implemented
+- [ ] Data export functionality (Right to Portability) is implemented
+- [ ] Data access request (SAR) processing is implemented
+- [ ] Consent acquisition mechanism is implemented
+- [ ] Consent withdrawal is possible
+- [ ] Consent acquisition timestamps are recorded
+- [ ] Tracking does not begin before consent is obtained
+- [ ] Data retention periods are defined and implemented
+- [ ] Only the minimum necessary data is collected in accordance with the data minimization principle
+- [ ] PII anonymization and pseudonymization are properly implemented
 
-### CCPA チェックリスト
+### CCPA Checklist
 
-- [ ] 「Do Not Sell or Share My Personal Information」リンクが実装されている
-- [ ] オプトアウトメカニズムが機能している
-- [ ] GPC（Global Privacy Control）ヘッダーに対応している
-- [ ] データ削除リクエストの処理が実装されている
-- [ ] プライバシーポリシーが適切にリンクされている
-- [ ] サードパーティへのデータ共有が管理されている
+- [ ] "Do Not Sell or Share My Personal Information" link is implemented
+- [ ] Opt-out mechanism is functional
+- [ ] GPC (Global Privacy Control) header is supported
+- [ ] Data deletion request processing is implemented
+- [ ] Privacy policy is properly linked
+- [ ] Data sharing with third parties is managed
 
-### SOC 2 Type II チェックリスト
+### SOC 2 Type II Checklist
 
-- [ ] 認証メカニズムが全エンドポイントに実装されている
-- [ ] 認可チェックがリソースレベルで実装されている
-- [ ] セッションタイムアウトが適切に設定されている
-- [ ] 入力バリデーションが全ユーザー入力に適用されている
-- [ ] ヘルスチェックエンドポイントが実装されている
-- [ ] スキーマバリデーションが使用されている
-- [ ] トランザクション管理が適切に実装されている
-- [ ] 機密データが暗号化されている
-- [ ] シークレット管理ツールが使用されている
-- [ ] PII のマスキング・リダクションが実装されている
-- [ ] 監査ログが適切に記録されている
+- [ ] Authentication mechanism is implemented for all endpoints
+- [ ] Authorization checks are implemented at the resource level
+- [ ] Session timeout is appropriately configured
+- [ ] Input validation is applied to all user inputs
+- [ ] Health check endpoint is implemented
+- [ ] Schema validation is in use
+- [ ] Transaction management is properly implemented
+- [ ] Sensitive data is encrypted
+- [ ] Secret management tools are in use
+- [ ] PII masking and redaction are implemented
+- [ ] Audit logs are properly recorded
 
-### ISO 27001 チェックリスト
+### ISO 27001 Checklist
 
-- [ ] 情報資産の分類が実装されている
-- [ ] アクセス制御ポリシーが実装されている（RBAC/ABAC）
-- [ ] 最小権限の原則が適用されている
-- [ ] 特権アクセスが適切に管理されている
-- [ ] 強い暗号アルゴリズムのみ使用されている（AES-256, SHA-256 以上）
-- [ ] 暗号鍵がコードにハードコードされていない
-- [ ] 鍵管理サービス（KMS）が使用されている
-- [ ] 構造化ロギングが実装されている
-- [ ] セキュリティイベントが記録されている
-- [ ] CI/CD パイプラインにセキュリティスキャンが含まれている
-- [ ] 依存関係の脆弱性スキャンが自動化されている
+- [ ] Information asset classification is implemented
+- [ ] Access control policies are implemented (RBAC/ABAC)
+- [ ] Principle of least privilege is applied
+- [ ] Privileged access is properly managed
+- [ ] Only strong cryptographic algorithms are used (AES-256, SHA-256 or above)
+- [ ] Cryptographic keys are not hardcoded in the codebase
+- [ ] Key Management Service (KMS) is in use
+- [ ] Structured logging is implemented
+- [ ] Security events are recorded
+- [ ] Security scanning is included in the CI/CD pipeline
+- [ ] Dependency vulnerability scanning is automated

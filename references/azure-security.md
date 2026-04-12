@@ -1,160 +1,160 @@
 # Azure Security Testing Reference
 
-Azure Security Benchmark に基づくセキュリティ検査ガイド。
-az CLI コマンドによる自動検査と CIS Microsoft Azure Foundations Benchmark への準拠を確認する。
+Security inspection guide based on the Azure Security Benchmark.
+Verify compliance with the CIS Microsoft Azure Foundations Benchmark through automated inspection using az CLI commands.
 
-## Azure AD / Entra ID の検査
+## Azure AD / Entra ID Inspection
 
-### Conditional Access・MFA
+### Conditional Access and MFA
 
 ```bash
-# Conditional Access ポリシー一覧
+# List Conditional Access policies
 az ad conditionalaccess policy list \
   --query '[].{name:displayName, state:state, grantControls:grantControls}' 2>/dev/null
 
-# MFA が要求されるポリシーの確認
+# Verify policies that require MFA
 az ad conditionalaccess policy list \
   --query '[?grantControls.builtInControls[?contains(@, `mfa`)]].displayName' 2>/dev/null
 
-# 全ユーザーの MFA 状態確認
+# Verify MFA status for all users
 az ad user list --query '[].{UPN:userPrincipalName, MFA:strongAuthenticationDetail}' 2>/dev/null
 ```
 
 ### Privileged Identity Management (PIM)
 
 ```bash
-# グローバル管理者ロールのメンバー（CIS 1.1）
+# Members with Global Administrator role (CIS 1.1)
 az role assignment list --role "Owner" --all \
   --query '[].{principal:principalName, scope:scope}'
 
-# 永続的な特権ロール割り当て
+# Permanent privileged role assignments
 az role assignment list --all \
   --query '[?roleDefinitionName==`Owner` || roleDefinitionName==`Contributor`].{principal:principalName, role:roleDefinitionName, scope:scope}'
 
-# カスタムロールの確認
+# Verify custom roles
 az role definition list --custom-role-only true \
   --query '[].{name:roleName, permissions:permissions[].actions}'
 ```
 
-### アプリケーション登録
+### Application Registrations
 
 ```bash
-# アプリケーション登録の一覧
+# List application registrations
 az ad app list --all \
   --query '[].{appId:appId, displayName:displayName, signInAudience:signInAudience}'
 
-# 期限切れまたは期限間近のクライアントシークレット
+# Expired or soon-to-expire client secrets
 az ad app list --all --query '[].{appId:appId, name:displayName, credentials:passwordCredentials[].{endDate:endDateTime}}' 2>/dev/null
 
-# マルチテナントアプリケーション（signInAudience が AzureADMultipleOrgs）
+# Multi-tenant applications (signInAudience is AzureADMultipleOrgs)
 az ad app list --all \
   --query '[?signInAudience==`AzureADMultipleOrgs`].{appId:appId, name:displayName}'
 
-# 過度な API アクセス許可を持つアプリ
+# Apps with excessive API permissions
 az ad app list --all \
   --query '[].{appId:appId, name:displayName, requiredResourceAccess:requiredResourceAccess}'
 ```
 
-## Storage の検査
+## Storage Inspection
 
-### ストレージアカウント
+### Storage Accounts
 
 ```bash
-# ストレージアカウント一覧
+# List storage accounts
 az storage account list \
   --query '[].{name:name, sku:sku.name, httpsOnly:enableHttpsTrafficOnly, minTls:minimumTlsVersion}'
 
-# HTTPS 強制の確認（CIS 3.1）
+# Verify HTTPS enforcement (CIS 3.1)
 az storage account list \
   --query '[?enableHttpsTrafficOnly==`false`].name'
 
-# TLS バージョンの確認（CIS 3.15 - TLS 1.2 以上）
+# Verify TLS version (CIS 3.15 - TLS 1.2 or above)
 az storage account list \
   --query '[?minimumTlsVersion!=`TLS1_2`].{name:name, tls:minimumTlsVersion}'
 
-# Blob のパブリックアクセス確認（CIS 3.5）
+# Verify blob public access (CIS 3.5)
 az storage account list \
   --query '[?allowBlobPublicAccess==`true`].name'
 
-# ストレージアカウントのネットワークルール
+# Storage account network rules
 for account in $(az storage account list --query '[].name' -o tsv); do
   echo "=== $account ==="
   az storage account show --name "$account" \
     --query 'networkRuleSet.{defaultAction:defaultAction, ipRules:ipRules, virtualNetworkRules:virtualNetworkRules}'
 done
 
-# ストレージアカウントの暗号化設定
+# Storage account encryption settings
 az storage account list \
   --query '[].{name:name, encryption:encryption.services}'
 ```
 
-### SAS トークン・アクセスキー
+### SAS Tokens and Access Keys
 
 ```bash
-# ストレージアカウントキーの一覧（ローテーション確認）
+# List storage account keys (rotation verification)
 for account in $(az storage account list --query '[].name' -o tsv); do
   echo "=== $account ==="
   az storage account keys list --account-name "$account" \
     --query '[].{keyName:keyName, creationTime:creationTime}'
 done
 
-# Shared Key アクセスの無効化確認（推奨）
+# Verify Shared Key access is disabled (recommended)
 az storage account list \
   --query '[?allowSharedKeyAccess!=`false`].name'
 ```
 
-## NSG（Network Security Group）の検査
+## NSG (Network Security Group) Inspection
 
 ```bash
-# NSG の一覧
+# List NSGs
 az network nsg list \
   --query '[].{name:name, rg:resourceGroup, rules:securityRules[].{name:name, access:access, direction:direction, sourceAddr:sourceAddressPrefix, destPort:destinationPortRange, priority:priority}}'
 
-# 全ポート許可の NSG ルール
+# NSG rules allowing all ports
 az network nsg list --query '[].securityRules[?sourceAddressPrefix==`*` && access==`Allow` && direction==`Inbound`].{nsg:id, name:name, destPort:destinationPortRange, priority:priority}' -o table
 
-# SSH（22）が全公開の NSG ルール（CIS 6.1）
+# NSG rules with SSH (22) open to all (CIS 6.1)
 az network nsg list \
   --query '[].securityRules[?sourceAddressPrefix==`*` && destinationPortRange==`22` && access==`Allow` && direction==`Inbound`].{name:name, priority:priority}'
 
-# RDP（3389）が全公開の NSG ルール（CIS 6.2）
+# NSG rules with RDP (3389) open to all (CIS 6.2)
 az network nsg list \
   --query '[].securityRules[?sourceAddressPrefix==`*` && destinationPortRange==`3389` && access==`Allow` && direction==`Inbound`].{name:name, priority:priority}'
 
-# NSG Flow Logs の確認（CIS 6.4）
+# Verify NSG Flow Logs (CIS 6.4)
 az network watcher flow-log list \
   --query '[].{name:name, enabled:enabled, nsg:targetResourceId, retention:retentionPolicy}' 2>/dev/null
 ```
 
-## Key Vault の検査
+## Key Vault Inspection
 
 ```bash
-# Key Vault 一覧
+# List Key Vaults
 az keyvault list \
   --query '[].{name:name, sku:properties.sku.name, softDelete:properties.enableSoftDelete, purgeProtection:properties.enablePurgeProtection}'
 
-# ソフトデリート未有効化の Key Vault（CIS 8.4）
+# Key Vaults without soft delete enabled (CIS 8.4)
 az keyvault list \
   --query '[?properties.enableSoftDelete!=`true`].name'
 
-# パージ保護未有効化の Key Vault（CIS 8.5）
+# Key Vaults without purge protection enabled (CIS 8.5)
 az keyvault list \
   --query '[?properties.enablePurgeProtection!=`true`].name'
 
-# Key Vault のアクセスポリシー確認
+# Verify Key Vault access policies
 for vault in $(az keyvault list --query '[].name' -o tsv); do
   echo "=== $vault ==="
   az keyvault show --name "$vault" \
     --query 'properties.accessPolicies[].{objectId:objectId, permissions:permissions}'
 done
 
-# Key Vault のネットワークルール
+# Key Vault network rules
 for vault in $(az keyvault list --query '[].name' -o tsv); do
   az keyvault show --name "$vault" \
     --query 'properties.networkAcls.{defaultAction:defaultAction, ipRules:ipRules}'
 done
 
-# キーのローテーション状態
+# Key rotation status
 for vault in $(az keyvault list --query '[].name' -o tsv); do
   echo "=== $vault ==="
   az keyvault key list --vault-name "$vault" \
@@ -162,48 +162,48 @@ for vault in $(az keyvault list --query '[].name' -o tsv); do
 done
 ```
 
-## App Service の検査
+## App Service Inspection
 
 ```bash
-# App Service 一覧
+# List App Services
 az webapp list \
   --query '[].{name:name, rg:resourceGroup, httpsOnly:httpsOnly, state:state}'
 
-# HTTPS 強制の確認（CIS 9.2）
+# Verify HTTPS enforcement (CIS 9.2)
 az webapp list \
   --query '[?httpsOnly==`false`].name'
 
-# マネージド ID の確認
+# Verify managed identities
 az webapp list \
   --query '[].{name:name, identity:identity.type}'
 
-# 認証設定の確認（CIS 9.1）
+# Verify authentication settings (CIS 9.1)
 for app in $(az webapp list --query '[].name' -o tsv); do
   rg=$(az webapp show --name "$app" --query 'resourceGroup' -o tsv)
   az webapp auth show --name "$app" --resource-group "$rg" \
     --query '{enabled:enabled, defaultProvider:defaultProvider}' 2>/dev/null
 done
 
-# TLS バージョンの確認（CIS 9.3）
+# Verify TLS version (CIS 9.3)
 for app in $(az webapp list --query '[].name' -o tsv); do
   rg=$(az webapp show --name "$app" --query 'resourceGroup' -o tsv)
   az webapp config show --name "$app" --resource-group "$rg" \
     --query '{minTlsVersion:minTlsVersion, ftpsState:ftpsState, http20Enabled:http20Enabled}'
 done
 
-# クライアント証明書の確認
+# Verify client certificates
 az webapp list \
   --query '[].{name:name, clientCertEnabled:clientCertEnabled}'
 ```
 
-## SQL Database の検査
+## SQL Database Inspection
 
 ```bash
-# SQL Server 一覧
+# List SQL Servers
 az sql server list \
   --query '[].{name:name, rg:resourceGroup, adminLogin:administratorLogin, minTls:minimalTlsVersion}'
 
-# ファイアウォールルールの確認（CIS 4.1.1）
+# Verify firewall rules (CIS 4.1.1)
 for server in $(az sql server list --query '[].name' -o tsv); do
   rg=$(az sql server show --name "$server" --query 'resourceGroup' -o tsv)
   echo "=== $server ==="
@@ -211,14 +211,14 @@ for server in $(az sql server list --query '[].name' -o tsv); do
     --query '[].{name:name, startIp:startIpAddress, endIp:endIpAddress}'
 done
 
-# 0.0.0.0 - 255.255.255.255 のルール検出
+# Detect 0.0.0.0 - 255.255.255.255 rules
 for server in $(az sql server list --query '[].name' -o tsv); do
   rg=$(az sql server show --name "$server" --query 'resourceGroup' -o tsv)
   az sql server firewall-rule list --server "$server" --resource-group "$rg" \
     --query '[?startIpAddress==`0.0.0.0` && endIpAddress==`255.255.255.255`].name'
 done
 
-# TDE（Transparent Data Encryption）の確認（CIS 4.1.2）
+# Verify TDE (Transparent Data Encryption) (CIS 4.1.2)
 for server in $(az sql server list --query '[].name' -o tsv); do
   rg=$(az sql server show --name "$server" --query 'resourceGroup' -o tsv)
   for db in $(az sql db list --server "$server" --resource-group "$rg" --query '[].name' -o tsv); do
@@ -227,219 +227,219 @@ for server in $(az sql server list --query '[].name' -o tsv); do
   done
 done
 
-# 監査設定の確認（CIS 4.1.3）
+# Verify audit settings (CIS 4.1.3)
 for server in $(az sql server list --query '[].name' -o tsv); do
   rg=$(az sql server show --name "$server" --query 'resourceGroup' -o tsv)
   az sql server audit-policy show --server "$server" --resource-group "$rg" \
     --query '{state:state, retentionDays:retentionDays}' 2>/dev/null
 done
 
-# AAD 管理者の確認（CIS 4.1.4）
+# Verify AAD administrator (CIS 4.1.4)
 for server in $(az sql server list --query '[].name' -o tsv); do
   rg=$(az sql server show --name "$server" --query 'resourceGroup' -o tsv)
   az sql server ad-admin list --server "$server" --resource-group "$rg" 2>/dev/null
 done
 ```
 
-## AKS の検査
+## AKS Inspection
 
 ```bash
-# AKS クラスタ一覧
+# List AKS clusters
 az aks list \
   --query '[].{name:name, rg:resourceGroup, rbac:enableRbac, networkPolicy:networkProfile.networkPolicy}'
 
-# RBAC 未有効化のクラスタ（CIS 8.5）
+# Clusters without RBAC enabled (CIS 8.5)
 az aks list \
   --query '[?enableRbac==`false`].name'
 
-# Azure AD 統合の確認
+# Verify Azure AD integration
 az aks list \
   --query '[].{name:name, aadProfile:aadProfile}'
 
-# ネットワークポリシーの確認
+# Verify network policies
 az aks list \
   --query '[?networkProfile.networkPolicy==`null`].name'
 
-# API サーバーの認可 IP 範囲
+# API server authorized IP ranges
 az aks list \
   --query '[].{name:name, authorizedIpRanges:apiServerAccessProfile.authorizedIpRanges}'
 
-# ポッドセキュリティの確認
+# Verify pod security
 az aks list \
   --query '[].{name:name, podSecurityPolicy:podSecurityPolicy}'
 ```
 
-## Functions の検査
+## Functions Inspection
 
 ```bash
-# Function App 一覧
+# List Function Apps
 az functionapp list \
   --query '[].{name:name, rg:resourceGroup, httpsOnly:httpsOnly, identity:identity.type}'
 
-# 認証設定の確認
+# Verify authentication settings
 for app in $(az functionapp list --query '[].name' -o tsv); do
   rg=$(az functionapp show --name "$app" --query 'resourceGroup' -o tsv)
   az functionapp auth show --name "$app" --resource-group "$rg" \
     --query '{enabled:enabled}' 2>/dev/null
 done
 
-# HTTPS 強制の確認
+# Verify HTTPS enforcement
 az functionapp list \
   --query '[?httpsOnly==`false`].name'
 
-# マネージド ID の使用確認
+# Verify managed identity usage
 az functionapp list \
   --query '[?identity.type==`null`].name'
 ```
 
-## Monitor・Diagnostic Settings の検査
+## Monitor and Diagnostic Settings Inspection
 
 ```bash
-# サブスクリプションレベルの Activity Log アラート（CIS 5.2.x）
+# Subscription-level Activity Log alerts (CIS 5.2.x)
 az monitor activity-log alert list \
   --query '[].{name:name, enabled:enabled, scopes:scopes, condition:condition}'
 
-# リソースの Diagnostic Settings 確認
+# Verify resource Diagnostic Settings
 az monitor diagnostic-settings list --resource <RESOURCE_ID> \
   --query '[].{name:name, logs:logs[].{category:category, enabled:enabled}, metrics:metrics[].{category:category, enabled:enabled}}' 2>/dev/null
 
-# Log Analytics Workspace の一覧
+# List Log Analytics Workspaces
 az monitor log-analytics workspace list \
   --query '[].{name:name, rg:resourceGroup, retention:retentionInDays, sku:sku.name}'
 
-# 保持期間の確認（CIS 5.1.2 - 90 日以上推奨）
+# Verify retention period (CIS 5.1.2 - 90+ days recommended)
 az monitor log-analytics workspace list \
   --query '[?retentionInDays < `90`].{name:name, retention:retentionInDays}'
 ```
 
-## Defender for Cloud の検査
+## Defender for Cloud Inspection
 
 ```bash
-# Secure Score の確認
+# Verify Secure Score
 az security secure-score list \
   --query '[].{name:displayName, current:score.current, max:score.max, percentage:score.percentage}'
 
-# セキュリティ推奨事項（High 以上）
+# Security recommendations (High and above)
 az security assessment list \
   --query '[?status.code==`Unhealthy` && (properties.metadata.severity==`High` || properties.metadata.severity==`Critical`)].{name:displayName, severity:properties.metadata.severity, status:status.code}' 2>/dev/null
 
-# Defender プランの有効化状態
+# Verify Defender plan enablement status
 az security pricing list \
   --query '[].{name:name, tier:pricingTier}'
 
-# 各プランが Standard（有効）であることを確認
+# Verify each plan is Standard (enabled)
 az security pricing list \
   --query '[?pricingTier==`Free`].name'
 ```
 
-## Private Endpoints の検査
+## Private Endpoints Inspection
 
 ```bash
-# Private Endpoint 一覧
+# List Private Endpoints
 az network private-endpoint list \
   --query '[].{name:name, rg:resourceGroup, subnet:subnet.id, connections:privateLinkServiceConnections[].{service:privateLinkServiceId, status:privateLinkServiceConnectionState.status}}'
 
-# Private Link が未設定のリソース確認（ストレージ）
+# Verify resources without Private Link configured (storage)
 for account in $(az storage account list --query '[].name' -o tsv); do
   pe=$(az storage account show --name "$account" --query 'privateEndpointConnections' -o tsv)
   [ -z "$pe" ] && echo "NO PRIVATE ENDPOINT: $account"
 done
 
-# Private DNS Zone の確認
+# Verify Private DNS Zones
 az network private-dns zone list \
   --query '[].{name:name, numberOfRecordSets:numberOfRecordSets}'
 ```
 
-## コードベースの静的解析
+## Codebase Static Analysis
 
 ```bash
-# Azure 認証情報のハードコード検出
+# Detect hardcoded Azure credentials
 grep -rn --include='*.{ts,tsx,js,jsx,py,go,java,cs}' \
   -iE '(azure_client_secret|azure_tenant_id|DefaultEndpointsProtocol)' . | grep -v node_modules
 
-# SAS トークンのハードコード
+# Hardcoded SAS tokens
 grep -rn --include='*.{ts,tsx,js,jsx,py,go,java,cs}' \
   -E '(sv=|sig=|se=|sp=).*(&sv=|&sig=|&se=|&sp=)' . | grep -v node_modules
 
-# 接続文字列のハードコード
+# Hardcoded connection strings
 grep -rn --include='*.{ts,tsx,js,jsx,py,go,java,cs}' \
   -E '(AccountKey=|SharedAccessKey=|Password=)[A-Za-z0-9+/=]{10,}' . | grep -v node_modules
 
-# .env ファイル内の Azure 認証情報
+# Azure credentials in .env files
 grep -rn -iE '(AZURE_CLIENT_SECRET|AZURE_STORAGE_KEY|AZURE_SQL_PASSWORD)' .env* 2>/dev/null
 ```
 
-## よくある設定ミス
+## Common Misconfigurations
 
-| 深刻度 | 設定ミス | CIS | 影響 |
-|--------|----------|-----|------|
-| Critical | NSG で全ポートが * から許可 | 6.1 | 全サービスが外部露出 |
-| Critical | SQL Server の全 IP 許可ファイアウォール | 4.1.1 | データベースへの直接アクセス |
-| Critical | Storage Account のパブリック Blob アクセス | 3.5 | データの全公開 |
-| Critical | 認証情報のハードコード | - | 認証情報の漏洩 |
-| High | Key Vault のソフトデリート未有効化 | 8.4 | シークレットの永久削除リスク |
-| High | App Service の HTTPS 未強制 | 9.2 | 通信の盗聴 |
-| High | SQL Database の TDE 未有効化 | 4.1.2 | 保存データの平文露出 |
-| High | Defender for Cloud の Free プラン | - | 脅威検出の欠如 |
-| High | MFA の Conditional Access 未設定 | 1.1 | アカウント乗っ取りリスク |
-| Medium | NSG Flow Logs 未有効化 | 6.4 | ネットワーク監視不可 |
-| Medium | AKS の RBAC 未有効化 | - | Kubernetes アクセス制御の欠如 |
-| Medium | Log Analytics の保持期間不足 | 5.1.2 | 監査証跡の喪失 |
-| Medium | マネージド ID 未使用 | - | 認証情報管理の複雑化 |
-| Low | Storage Account の TLS 1.2 未強制 | 3.15 | 古いプロトコルの使用 |
-| Low | Private Endpoint 未設定 | - | パブリックネットワーク経由のアクセス |
+| Severity | Misconfiguration | CIS | Impact |
+|----------|------------------|-----|--------|
+| Critical | NSG allowing all ports from * | 6.1 | All services exposed to the internet |
+| Critical | SQL Server firewall allowing all IPs | 4.1.1 | Direct database access |
+| Critical | Public blob access on Storage Account | 3.5 | Full data exposure |
+| Critical | Hardcoded credentials | - | Credential leakage |
+| High | Soft delete not enabled on Key Vault | 8.4 | Risk of permanent secret deletion |
+| High | HTTPS not enforced on App Service | 9.2 | Traffic interception |
+| High | TDE not enabled on SQL Database | 4.1.2 | Stored data exposed in plaintext |
+| High | Defender for Cloud on Free plan | - | Lack of threat detection |
+| High | MFA not configured in Conditional Access | 1.1 | Account takeover risk |
+| Medium | NSG Flow Logs not enabled | 6.4 | Unable to monitor network |
+| Medium | RBAC not enabled on AKS | - | Lack of Kubernetes access control |
+| Medium | Insufficient Log Analytics retention period | 5.1.2 | Loss of audit trail |
+| Medium | Managed identity not used | - | Complex credential management |
+| Low | TLS 1.2 not enforced on Storage Account | 3.15 | Use of legacy protocols |
+| Low | Private Endpoint not configured | - | Access via public network |
 
-## セキュリティチェックリスト
+## Security Checklist
 
-### Azure AD / Entra ID（CIS 1.x）
-- [ ] Conditional Access ポリシーで MFA が要求されている
-- [ ] グローバル管理者が最小限のメンバーに制限されている
-- [ ] PIM で特権ロールが Just-In-Time 化されている
-- [ ] アプリケーション登録のシークレットが有効期限内
-- [ ] マルチテナントアプリが必要最小限
+### Azure AD / Entra ID (CIS 1.x)
+- [ ] MFA is required via Conditional Access policies
+- [ ] Global administrators are restricted to minimal members
+- [ ] Privileged roles are Just-In-Time enabled via PIM
+- [ ] Application registration secrets are within validity period
+- [ ] Multi-tenant apps are kept to a minimum
 
-### Storage（CIS 3.x）
-- [ ] HTTPS 転送が強制されている
-- [ ] 最小 TLS バージョンが 1.2 以上
-- [ ] Blob のパブリックアクセスが無効
-- [ ] ネットワークルールでデフォルトアクションが Deny
-- [ ] Shared Key アクセスが無効化されている
+### Storage (CIS 3.x)
+- [ ] HTTPS transfer is enforced
+- [ ] Minimum TLS version is 1.2 or above
+- [ ] Blob public access is disabled
+- [ ] Network rules default action is Deny
+- [ ] Shared Key access is disabled
 
-### ネットワーク（CIS 6.x）
-- [ ] NSG で SSH（22）が特定 IP に制限されている
-- [ ] NSG で RDP（3389）が特定 IP に制限されている
-- [ ] NSG Flow Logs が有効
-- [ ] Private Endpoint が適切に設定されている
+### Network (CIS 6.x)
+- [ ] SSH (22) is restricted to specific IPs in NSGs
+- [ ] RDP (3389) is restricted to specific IPs in NSGs
+- [ ] NSG Flow Logs are enabled
+- [ ] Private Endpoints are properly configured
 
-### Key Vault（CIS 8.x）
-- [ ] ソフトデリートが有効
-- [ ] パージ保護が有効
-- [ ] アクセスポリシーが最小権限
-- [ ] ネットワークルールが設定されている
-- [ ] キーのローテーションが設定されている
+### Key Vault (CIS 8.x)
+- [ ] Soft delete is enabled
+- [ ] Purge protection is enabled
+- [ ] Access policies follow least privilege
+- [ ] Network rules are configured
+- [ ] Key rotation is configured
 
-### App Service（CIS 9.x）
-- [ ] HTTPS が強制されている
-- [ ] マネージド ID が使用されている
-- [ ] 認証が有効化されている
-- [ ] 最小 TLS バージョンが 1.2 以上
-- [ ] FTPS が無効化されている
+### App Service (CIS 9.x)
+- [ ] HTTPS is enforced
+- [ ] Managed identity is used
+- [ ] Authentication is enabled
+- [ ] Minimum TLS version is 1.2 or above
+- [ ] FTPS is disabled
 
-### SQL Database（CIS 4.1.x）
-- [ ] ファイアウォールルールに全 IP 許可がない
-- [ ] TDE が有効
-- [ ] 監査が有効
-- [ ] AAD 管理者が設定されている
-- [ ] 最小 TLS バージョンが 1.2 以上
+### SQL Database (CIS 4.1.x)
+- [ ] No firewall rules allowing all IPs
+- [ ] TDE is enabled
+- [ ] Auditing is enabled
+- [ ] AAD administrator is configured
+- [ ] Minimum TLS version is 1.2 or above
 
-### モニタリング（CIS 5.x）
-- [ ] Activity Log アラートが設定されている
-- [ ] Diagnostic Settings が適切に構成されている
-- [ ] Log Analytics の保持期間が 90 日以上
-- [ ] Defender for Cloud が Standard プラン
+### Monitoring (CIS 5.x)
+- [ ] Activity Log alerts are configured
+- [ ] Diagnostic Settings are properly configured
+- [ ] Log Analytics retention period is 90+ days
+- [ ] Defender for Cloud is on Standard plan
 
-### コンテナ
-- [ ] AKS で RBAC が有効
-- [ ] Azure AD 統合が設定されている
-- [ ] ネットワークポリシーが設定されている
-- [ ] API サーバーの認可 IP 範囲が制限されている
+### Containers
+- [ ] RBAC is enabled on AKS
+- [ ] Azure AD integration is configured
+- [ ] Network policies are configured
+- [ ] API server authorized IP ranges are restricted

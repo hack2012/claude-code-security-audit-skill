@@ -1,174 +1,174 @@
 # Web Security Testing Reference
 
-OWASP WSTG + Top 10:2025 に基づく詳細検査ガイド。
+Detailed testing guide based on OWASP WSTG + Top 10:2025.
 
-## WSTG テストカテゴリ
+## WSTG Test Categories
 
-### WSTG-INFO: 情報収集
+### WSTG-INFO: Information Gathering
 
-- Web サーバーのフィンガープリント
-- メタデータ・コメント内の情報漏洩
-- エントリポイントの列挙
-- アプリケーションマップの作成
+- Web server fingerprinting
+- Information leakage in metadata and comments
+- Entry point enumeration
+- Application mapping
 
-### WSTG-CONF: 設定・デプロイメント
+### WSTG-CONF: Configuration and Deployment
 
-検査対象:
-- セキュリティヘッダー（CSP, HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy）
-- CORS 設定（ワイルドカードオリジンの検出）
-- HTTP メソッド（不要な PUT/DELETE/TRACE の無効化）
-- デフォルトクレデンシャル
-- 管理画面の公開状態
-- エラーページの情報露出
-- .env / .git / backup ファイルの公開
+Inspection Targets:
+- Security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy)
+- CORS configuration (wildcard origin detection)
+- HTTP methods (disabling unnecessary PUT/DELETE/TRACE)
+- Default credentials
+- Admin panel exposure
+- Information disclosure in error pages
+- Exposure of .env / .git / backup files
 
 ```bash
-# セキュリティヘッダー検査パターン
+# Security header detection patterns
 grep -rn --include='*.{ts,js,py,rb,go}' \
   -E '(helmet|SecurityHeaders|Content-Security-Policy|X-Frame-Options)' .
 
-# CORS ワイルドカード検出
+# CORS wildcard detection
 grep -rn --include='*.{ts,js,py,rb,go,json,yaml,yml}' \
   -E "(origin:\s*['\"]?\*|Access-Control-Allow-Origin.*\*|cors.*\*)" .
 ```
 
-### WSTG-ATHN: 認証
+### WSTG-ATHN: Authentication
 
-検査対象:
-- パスワードポリシー（最小長、複雑性）
-- ブルートフォース対策（レート制限、アカウントロック）
-- パスワードリセットフローの安全性
-- セッション固定攻撃
-- 多要素認証のバイパス
-- JWT の検証不備（alg: none、鍵の露出、期限切れ未検証）
+Inspection Targets:
+- Password policy (minimum length, complexity)
+- Brute force protection (rate limiting, account lockout)
+- Password reset flow security
+- Session fixation attacks
+- Multi-factor authentication bypass
+- JWT validation flaws (alg: none, key exposure, expiration not verified)
 
 ```bash
-# JWT 検証パターン
+# JWT validation patterns
 grep -rn --include='*.{ts,js,py,rb,go}' \
   -E '(jwt\.(verify|decode|sign)|jsonwebtoken|PyJWT|jose)' .
 
-# alg: none 許容の検出
+# Detection of alg: none acceptance
 grep -rn --include='*.{ts,js,py}' \
   -E '(algorithms.*none|ignoreExpiration.*true|verify.*false)' .
 ```
 
-### WSTG-ATHZ: 認可
+### WSTG-ATHZ: Authorization
 
-検査対象:
-- IDOR（Insecure Direct Object Reference）
-- 垂直権限昇格（一般ユーザー -> 管理者）
-- 水平権限昇格（ユーザー A -> ユーザー B のリソース）
-- パストラバーサル（`../` による制限外アクセス）
-- API エンドポイントの認可チェック漏れ
+Inspection Targets:
+- IDOR (Insecure Direct Object Reference)
+- Vertical privilege escalation (regular user -> admin)
+- Horizontal privilege escalation (User A -> User B's resources)
+- Path traversal (accessing restricted areas via `../`)
+- Missing authorization checks on API endpoints
 
 ```bash
-# パラメータベースのオブジェクト参照検出
+# Parameter-based object reference detection
 grep -rn --include='*.{ts,js,py,rb,go}' \
   -E '(params\.(id|userId|user_id)|req\.(params|query)\[.*(id|Id)\]|request\.(args|form)\[)' .
 
-# 認可ミドルウェアの欠落確認（Express/Koa/Fastify）
+# Missing authorization middleware detection (Express/Koa/Fastify)
 grep -rn --include='*.{ts,js}' \
   -E '(router\.(get|post|put|patch|delete)|app\.(get|post|put|patch|delete))' . | \
   grep -v -E '(auth|middleware|guard|protect|verify|check)'
 ```
 
-### WSTG-INPV: 入力検証
+### WSTG-INPV: Input Validation
 
-検査対象:
-- SQL/NoSQL インジェクション
-- コマンドインジェクション
-- XSS（Reflected, Stored, DOM-based）
-- SSTI（Server-Side Template Injection）
-- SSRF（Server-Side Request Forgery）
-- パラメータ汚染
+Inspection Targets:
+- SQL/NoSQL injection
+- Command injection
+- XSS (Reflected, Stored, DOM-based)
+- SSTI (Server-Side Template Injection)
+- SSRF (Server-Side Request Forgery)
+- Parameter pollution
 - Mass Assignment
 
 ```bash
-# SQL インジェクション危険パターン
+# SQL injection risk patterns
 grep -rn --include='*.{ts,js,py,rb,go}' \
   -E '(query\(.*\$\{|query\(.*\+.*req\.|execute\(.*%s|\.raw\(|\.exec\(.*\+)' .
 
-# コマンドインジェクション
+# Command injection
 grep -rn --include='*.{ts,js,py,rb,go}' \
   -E '(child_process|exec\(|execSync|spawn|system\(|popen|subprocess|os\.system)' .
 
-# eval / Function コンストラクタ
+# eval / Function constructor
 grep -rn --include='*.{ts,js,tsx,jsx}' \
   -E '(eval\(|new\s+Function\()' . | grep -v 'node_modules'
 
-# DOM-based XSS パターン（innerHTML 等の直接 DOM 操作）
+# DOM-based XSS patterns (direct DOM manipulation such as innerHTML)
 grep -rn --include='*.{ts,js,tsx,jsx}' \
   -E '(innerHTML|outerHTML|document\.write|v-html|bypassSecurityTrust)' .
 ```
 
-### WSTG-SESS: セッション管理
+### WSTG-SESS: Session Management
 
-検査対象:
-- Cookie 属性（Secure, HttpOnly, SameSite, Path, Domain）
-- セッション ID の十分なエントロピー
-- セッションタイムアウト
-- CSRF トークンの実装
-- ログアウト時のセッション無効化
+Inspection Targets:
+- Cookie attributes (Secure, HttpOnly, SameSite, Path, Domain)
+- Sufficient entropy in session IDs
+- Session timeout
+- CSRF token implementation
+- Session invalidation on logout
 
 ```bash
-# Cookie 設定の確認
+# Check Cookie configuration
 grep -rn --include='*.{ts,js,py,rb,go}' \
   -E '(setCookie|set-cookie|cookie\(|session\(|httpOnly|sameSite|secure:)' .
 
-# CSRF トークン検出
+# CSRF token detection
 grep -rn --include='*.{ts,js,py,rb,go,html}' \
   -E '(csrf|_token|authenticity_token|X-CSRF|xsrf)' .
 ```
 
-### WSTG-CRYP: 暗号
+### WSTG-CRYP: Cryptography
 
-検査対象:
-- TLS 1.2 以上の使用
-- 弱い暗号アルゴリズム（MD5, SHA1, DES, RC4）
-- パスワードハッシュ（bcrypt/scrypt/Argon2 の使用）
-- 暗号鍵のハードコード
+Inspection Targets:
+- Use of TLS 1.2 or higher
+- Weak cryptographic algorithms (MD5, SHA1, DES, RC4)
+- Password hashing (use of bcrypt/scrypt/Argon2)
+- Hardcoded cryptographic keys
 
 ```bash
-# 弱い暗号アルゴリズム
+# Weak cryptographic algorithms
 grep -rn --include='*.{ts,js,py,rb,go,swift}' \
   -iE '(md5|sha1[^0-9]|des[^a-z]|rc4|createCipher\b)' . | \
   grep -v 'node_modules'
 
-# パスワードハッシュの確認
+# Password hashing check
 grep -rn --include='*.{ts,js,py,rb,go}' \
   -iE '(bcrypt|scrypt|argon2|pbkdf2|hashpw)' .
 ```
 
-### WSTG-APIT: API テスト
+### WSTG-APIT: API Testing
 
-検査対象:
-- 過剰なデータ露出（レスポンスに不要なフィールド）
-- BOLA/BFLA（Broken Object/Function Level Authorization）
-- レート制限の欠如
-- GraphQL: イントロスペクション有効、ネスト攻撃
-- API バージョニングと非推奨エンドポイント
+Inspection Targets:
+- Excessive data exposure (unnecessary fields in responses)
+- BOLA/BFLA (Broken Object/Function Level Authorization)
+- Missing rate limiting
+- GraphQL: Introspection enabled, nesting attacks
+- API versioning and deprecated endpoints
 
 ```bash
-# GraphQL イントロスペクション
+# GraphQL introspection
 grep -rn --include='*.{ts,js,py,rb,go}' \
   -E '(introspection|__schema|__type)' .
 
-# レート制限の実装確認
+# Rate limiting implementation check
 grep -rn --include='*.{ts,js,py,rb,go}' \
   -iE '(rate.?limit|throttle|express-rate|slowDown|limiter)' .
 ```
 
-## OWASP Top 10:2025 クイックリファレンス
+## OWASP Top 10:2025 Quick Reference
 
-| Rank | Category | 主な検出パターン |
-|------|----------|------------------|
-| A01 | Broken Access Control | 認可チェック欠落、IDOR、パストラバーサル |
-| A02 | Security Misconfiguration | デフォルト設定、不要なサービス、エラー露出 |
-| A03 | Supply Chain Failures | 既知脆弱性のある依存パッケージ |
-| A04 | Cryptographic Failures | 弱い暗号、平文通信、鍵のハードコード |
+| Rank | Category | Key Detection Patterns |
+|------|----------|------------------------|
+| A01 | Broken Access Control | Missing authorization checks, IDOR, path traversal |
+| A02 | Security Misconfiguration | Default settings, unnecessary services, error disclosure |
+| A03 | Supply Chain Failures | Dependencies with known vulnerabilities |
+| A04 | Cryptographic Failures | Weak encryption, cleartext communication, hardcoded keys |
 | A05 | Injection | SQL/NoSQL/Command/XSS/SSTI |
-| A06 | Insecure Design | 脅威モデリング欠如、ビジネスロジック欠陥 |
-| A07 | Authentication Failures | 弱いパスワードポリシー、セッション管理不備 |
-| A08 | Integrity Failures | CI/CD 改ざん、依存性検証欠如 |
-| A09 | Logging Failures | 監査ログ欠如、機密データのログ出力 |
-| A10 | Exception Handling | フェイルオープン、スタックトレース露出 |
+| A06 | Insecure Design | Lack of threat modeling, business logic flaws |
+| A07 | Authentication Failures | Weak password policy, session management flaws |
+| A08 | Integrity Failures | CI/CD tampering, lack of dependency verification |
+| A09 | Logging Failures | Missing audit logs, sensitive data in log output |
+| A10 | Exception Handling | Fail-open behavior, stack trace exposure |

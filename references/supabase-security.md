@@ -1,24 +1,24 @@
 # Supabase Security Testing Reference
 
-Supabase のバックエンド設定レベルのセキュリティ検査ガイド。
-CLI/SQL で取得可能な項目と、Chrome MCP によるダッシュボード検査を組み合わせる。
+Backend configuration-level security testing guide for Supabase.
+Combines items that can be retrieved via CLI/SQL with dashboard inspection via Chrome MCP.
 
-## CLI による自動検査
+## CLI-Based Automated Inspection
 
-### データベース Lint（最重要）
+### Database Lint (Most Important)
 
 ```bash
-# public スキーマの lint 実行
+# Run lint on the public schema
 supabase db lint --linked --schema public
 
-# エラーレベル指定（CI/CD 向け）
+# Specify error level (for CI/CD)
 supabase db lint --linked --fail-on warning
 ```
 
-**Splinter Lint ルール（セキュリティ関連）**:
+**Splinter Lint Rules (Security-Related)**:
 
-| コード | ルール名 | 深刻度 |
-|--------|----------|--------|
+| Code | Rule Name | Severity |
+|------|-----------|----------|
 | 0002 | Auth Users Exposed | Critical |
 | 0006 | Multiple Permissive Policies | High |
 | 0007 | Policy Exists RLS Disabled | Critical |
@@ -29,35 +29,35 @@ supabase db lint --linked --fail-on warning
 | 0014 | Extension in Public | Medium |
 | 0015 | RLS References user_metadata | High |
 
-### SSL・ネットワーク検査
+### SSL and Network Inspection
 
 ```bash
-# SSL 強制の確認
+# Check SSL enforcement
 supabase ssl-enforcement get --project-ref $PROJECT_REF
 
-# ネットワーク制限の確認
+# Check network restrictions
 supabase network-restrictions get --project-ref $PROJECT_REF
 
-# ブルートフォースで BAN された IP の確認
+# Check IPs banned due to brute force
 supabase network-bans get --project-ref $PROJECT_REF
 ```
 
 ### Edge Functions
 
 ```bash
-# 関数一覧
+# List functions
 supabase functions list --project-ref $PROJECT_REF
 
-# シークレット一覧
+# List secrets
 supabase secrets list --project-ref $PROJECT_REF
 ```
 
-## SQL による詳細検査
+## Detailed Inspection via SQL
 
-### RLS 状態の確認（最重要）
+### RLS Status Check (Most Important)
 
 ```sql
--- RLS が無効なテーブル一覧（Critical）
+-- List of tables with RLS disabled (Critical)
 SELECT n.nspname AS schema, c.relname AS table_name
 FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -66,7 +66,7 @@ WHERE c.relkind = 'r'
   AND c.relrowsecurity = false
 ORDER BY c.relname;
 
--- 全テーブルの RLS 状態
+-- RLS status for all tables
 SELECT n.nspname AS schema, c.relname AS table_name,
   c.relrowsecurity AS rls_enabled, c.relforcerowsecurity AS rls_forced
 FROM pg_class c
@@ -75,22 +75,22 @@ WHERE c.relkind = 'r' AND n.nspname = 'public'
 ORDER BY c.relname;
 ```
 
-### RLS ポリシーの検査
+### RLS Policy Inspection
 
 ```sql
--- テーブルごとのポリシー確認
+-- Check policies per table
 SELECT schemaname, tablename, policyname, permissive, roles, cmd,
   qual AS using_expression, with_check
 FROM pg_policies WHERE schemaname = 'public'
 ORDER BY tablename, policyname;
 
--- 過度に許容的なポリシー（USING (true)）の検出
+-- Detect overly permissive policies (USING (true))
 SELECT schemaname, tablename, policyname, cmd, qual, with_check
 FROM pg_policies
 WHERE schemaname = 'public'
   AND (qual::text = 'true' OR with_check::text = 'true');
 
--- RLS 有効だがポリシーなしのテーブル
+-- Tables with RLS enabled but no policies
 SELECT n.nspname, c.relname
 FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -98,17 +98,17 @@ WHERE c.relkind = 'r' AND n.nspname = 'public' AND c.relrowsecurity = true
   AND c.relname NOT IN (SELECT tablename FROM pg_policies WHERE schemaname = 'public');
 ```
 
-### 関数のセキュリティ検査
+### Function Security Inspection
 
 ```sql
--- anon ロールが実行可能な関数
+-- Functions executable by the anon role
 SELECT n.nspname, p.proname, p.prosecdef AS security_definer
 FROM pg_proc p
 JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname = 'public'
   AND has_function_privilege('anon', p.oid, 'EXECUTE');
 
--- SECURITY DEFINER 関数（特権昇格リスク）
+-- SECURITY DEFINER functions (privilege escalation risk)
 SELECT n.nspname, p.proname, r.rolname AS owner,
   pg_get_functiondef(p.oid) AS definition
 FROM pg_proc p
@@ -118,10 +118,10 @@ WHERE p.prosecdef = true
   AND n.nspname NOT IN ('pg_catalog', 'information_schema');
 ```
 
-### 権限の検査
+### Permission Inspection
 
 ```sql
--- anon/authenticated の権限確認
+-- Check anon/authenticated permissions
 SELECT grantee, table_schema, table_name, privilege_type
 FROM information_schema.table_privileges
 WHERE table_schema = 'public'
@@ -129,13 +129,13 @@ WHERE table_schema = 'public'
 ORDER BY table_name, grantee, privilege_type;
 ```
 
-### Storage の検査
+### Storage Inspection
 
 ```sql
--- バケット一覧と公開状態
+-- List buckets and their public status
 SELECT id, name, public, created_at FROM storage.buckets ORDER BY name;
 
--- Storage ポリシー
+-- Storage policies
 SELECT * FROM pg_policies WHERE schemaname = 'storage' ORDER BY tablename, policyname;
 ```
 
@@ -241,35 +241,35 @@ mcp__chrome-devtools__take_snapshot()    → extract API config
 | Data API | Disabled if not needed | Dashboard → Settings → API → toggle Data API OFF |
 | JWT secret rotation | Rotated periodically | Dashboard → Settings → API → rotate JWT secret |
 
-## よくある設定ミス
+## Common Misconfigurations
 
-| 深刻度 | 設定ミス | 影響 |
-|--------|----------|------|
-| Critical | public テーブルで RLS 無効 | anon key で全データ読み書き可能 |
-| Critical | service_role キーのクライアント露出 | RLS を完全バイパス |
-| Critical | SSRF via http 拡張 | 任意 URL の取得が可能 |
-| High | `USING (true)` の RLS ポリシー | 全行がアクセス可能 |
-| High | Email 確認なし | 未確認メールでサインイン可能 |
-| High | SECURITY DEFINER 関数の誤用 | 特権昇格 |
-| High | RLS が user_metadata を参照 | ユーザーが自身で変更可能な値で認可判定 |
-| Medium | Storage バケットのポリシー欠如 | 全ファイルが公開 |
-| Medium | Realtime のフィルタなし | 不要なデータ漏洩 |
-| Medium | public スキーマに拡張インストール | 攻撃面の拡大 |
-| Low | カスタム SMTP 未設定 | 30 ユーザー/時間制限、配信性低下 |
+| Severity | Misconfiguration | Impact |
+|----------|------------------|--------|
+| Critical | RLS disabled on public tables | All data readable/writable with anon key |
+| Critical | service_role key exposed in client | Completely bypasses RLS |
+| Critical | SSRF via http extension | Arbitrary URL fetching possible |
+| High | RLS policy with `USING (true)` | All rows accessible |
+| High | Email confirmation disabled | Sign-in possible with unverified email |
+| High | Misuse of SECURITY DEFINER functions | Privilege escalation |
+| High | RLS references user_metadata | Authorization based on user-modifiable values |
+| Medium | Missing Storage bucket policies | All files publicly accessible |
+| Medium | Realtime without filters | Unnecessary data leakage |
+| Medium | Extensions installed in public schema | Increased attack surface |
+| Low | Custom SMTP not configured | 30 users/hour limit, poor deliverability |
 
-## コードベースの静的解析
+## Static Analysis of Codebase
 
 ```bash
-# service_role キーのクライアント露出検出
+# Detect service_role key exposure in client code
 grep -rn --include='*.{ts,tsx,js,jsx}' \
   -E '(service_role|SUPABASE_SERVICE_ROLE|supabaseServiceRole)' . | \
   grep -v 'node_modules' | grep -v '.env'
 
-# anon key のハードコード
+# Hardcoded anon key
 grep -rn --include='*.{ts,tsx,js,jsx}' \
   -E 'eyJ[A-Za-z0-9_-]{20,}' . | grep -v 'node_modules'
 
-# supabase-js の createClient で service_role を使用
+# createClient using service_role in supabase-js
 grep -rn --include='*.{ts,tsx,js,jsx}' \
   -E 'createClient.*service_role' .
 ```

@@ -1,312 +1,312 @@
 # Python Security Testing Reference
 
-Python (Django / FastAPI / Flask) 固有の脆弱性パターンと検査ガイド。OWASP Top 10 + Bandit ルールに基づく。
+Vulnerability patterns and testing guide specific to Python (Django / FastAPI / Flask). Based on OWASP Top 10 + Bandit rules.
 
 ## SQL Injection
 
-### リスク
+### Risk
 
-ORM を使用していても、raw クエリや文字列フォーマットによる SQL 構築で SQL Injection が発生する。Django の `extra()`, `raw()`, FastAPI/Flask での直接 SQL 実行が主なリスク。
+Even when using an ORM, SQL Injection can occur through raw queries or SQL construction via string formatting. The main risks are Django's `extra()`, `raw()`, and direct SQL execution in FastAPI/Flask.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# Django raw SQL（B610）
+# Django raw SQL (B610)
 grep -rn --include='*.py' -E '\.raw\(|\.extra\(' . | grep -v venv
 
-# 文字列フォーマットによる SQL 構築（B608）
+# SQL construction via string formatting (B608)
 grep -rn --include='*.py' \
   -E "(execute\(.*(%s|%d|\.format\(|f['\"])|cursor\.execute\(.*\+)" . | grep -v venv
 
-# SQLAlchemy text() 内の文字列結合
+# String concatenation inside SQLAlchemy text()
 grep -rn --include='*.py' -E 'text\(.*(\+|\.format|f["\x27])' . | grep -v venv
 
-# Django filter での安全でないクエリ構築
+# Unsafe query construction in Django filter
 grep -rn --include='*.py' -E '__in=.*\[.*request\.' . | grep -v venv
 
-# ORM の where 句に直接文字列を渡すパターン
+# Pattern of passing strings directly to ORM where clause
 grep -rn --include='*.py' -E '\.filter\(.*%.*request\.' . | grep -v venv
 ```
 
 ## Command Injection
 
-### リスク
+### Risk
 
-`os.system()`, `subprocess` を shell=True で使用、`eval()`, `exec()` によるコード実行は任意コマンド実行につながる。Bandit B101, B301, B602, B603 に対応。
+Using `os.system()`, `subprocess` with shell=True, `eval()`, and `exec()` for code execution can lead to arbitrary command execution. Corresponds to Bandit B101, B301, B602, B603.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# os.system / os.popen（B605, B606）
+# os.system / os.popen (B605, B606)
 grep -rn --include='*.py' -E '(os\.system|os\.popen)\(' . | grep -v venv
 
-# subprocess with shell=True（B602）
+# subprocess with shell=True (B602)
 grep -rn --include='*.py' -E 'subprocess\.\w+\(.*shell\s*=\s*True' . | grep -v venv
 
-# eval / exec（B307）
+# eval / exec (B307)
 grep -rn --include='*.py' -E '\b(eval|exec)\(' . | grep -v venv
 
-# compile + exec パターン
+# compile + exec pattern
 grep -rn --include='*.py' -E 'compile\(.*exec\(' . | grep -v venv
 
-# __import__ による動的インポート
+# Dynamic import via __import__
 grep -rn --include='*.py' '__import__\(' . | grep -v venv
 ```
 
 ## Server-Side Template Injection (SSTI)
 
-### リスク
+### Risk
 
-Jinja2 テンプレートや Django テンプレートにユーザー入力が直接渡されると、サーバー側でコードが実行される。
+When user input is passed directly to Jinja2 templates or Django templates, server-side code execution can occur.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# Jinja2 で autoescape 無効（B701）
+# Jinja2 with autoescape disabled (B701)
 grep -rn --include='*.py' -E 'Environment\(.*autoescape\s*=\s*False' . | grep -v venv
 
-# Template を文字列から直接生成
+# Template generated directly from string
 grep -rn --include='*.py' -E '(Template\(.*request\.|render_template_string\()' . | grep -v venv
 
-# Django mark_safe（XSS リスク）
+# Django mark_safe (XSS risk)
 grep -rn --include='*.py' 'mark_safe\(' . | grep -v venv
 
-# Django の |safe フィルター
+# Django |safe filter
 grep -rn --include='*.html' '|safe' . | grep -v venv
 ```
 
 ## Authentication
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# Django: 認証デコレータの欠如を確認
+# Django: Check for missing authentication decorators
 grep -rn --include='*.py' -E 'def (post|put|patch|delete)\(' . | grep -v venv
-# → 対応する @login_required / @permission_required があるか確認
+# -> Verify corresponding @login_required / @permission_required exists
 
-# Django REST Framework: 認証クラスの設定
+# Django REST Framework: Authentication class settings
 grep -rn --include='*.py' -E '(authentication_classes|permission_classes)\s*=' . | grep -v venv
 grep -rn --include='*.py' 'AllowAny' . | grep -v venv
 
-# FastAPI: Depends() による認証確認
+# FastAPI: Authentication via Depends()
 grep -rn --include='*.py' -E '@(app|router)\.(get|post|put|delete|patch)' . | grep -v venv
-# → Depends(get_current_user) 等があるか確認
+# -> Verify Depends(get_current_user) or similar exists
 
-# Flask-Login: login_required の使用
+# Flask-Login: Usage of login_required
 grep -rn --include='*.py' '@login_required' . | grep -v venv
 
-# パスワードのハッシュ化確認
+# Password hashing verification
 grep -rn --include='*.py' -E '(make_password|check_password|pbkdf2|bcrypt|argon2)' . | grep -v venv
 
-# 平文パスワードの保存（危険）
+# Plaintext password storage (dangerous)
 grep -rn --include='*.py' -E 'password\s*=' . | grep -v venv | grep -v hash | grep -v bcrypt
 ```
 
 ## CSRF Protection
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# Django: CSRF middleware の確認
+# Django: Verify CSRF middleware
 grep -rn --include='*.py' 'CsrfViewMiddleware' . | grep -v venv
 
-# Django: csrf_exempt の使用（要確認）
+# Django: Usage of csrf_exempt (requires review)
 grep -rn --include='*.py' '@csrf_exempt' . | grep -v venv
 
-# FastAPI: CORS 設定
+# FastAPI: CORS settings
 grep -rn --include='*.py' -E '(CORSMiddleware|allow_origins)' . | grep -v venv
 
-# FastAPI: CORS でワイルドカードオリジン（危険）
+# FastAPI: Wildcard origin in CORS (dangerous)
 grep -rn --include='*.py' -E "allow_origins\s*=\s*\[.*['\"]?\*['\"]?" . | grep -v venv
 
-# Flask-WTF: CSRF 保護の確認
+# Flask-WTF: CSRF protection verification
 grep -rn --include='*.py' -E '(CSRFProtect|csrf\.init_app)' . | grep -v venv
 ```
 
 ## Deserialization
 
-### リスク
+### Risk
 
-`pickle`, `yaml.load()`, `marshal` によるデシリアライズはリモートコード実行を引き起こす。Bandit B301, B506 に対応。
+Deserialization via `pickle`, `yaml.load()`, and `marshal` can cause remote code execution. Corresponds to Bandit B301, B506.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# pickle の使用（B301）
+# Usage of pickle (B301)
 grep -rn --include='*.py' -E '(pickle\.loads?|cPickle\.loads?|shelve\.open)\(' . | grep -v venv
 
-# yaml.load without SafeLoader（B506）
+# yaml.load without SafeLoader (B506)
 grep -rn --include='*.py' 'yaml\.load\(' . | grep -v venv | grep -v SafeLoader | grep -v safe_load
 
-# marshal の使用（B302）
+# Usage of marshal (B302)
 grep -rn --include='*.py' 'marshal\.loads?\(' . | grep -v venv
 
-# jsonpickle（危険なライブラリ）
+# jsonpickle (dangerous library)
 grep -rn --include='*.py' 'jsonpickle' . | grep -v venv
 ```
 
 ## File Upload
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# ファイル拡張子の検証なし
+# No file extension validation
 grep -rn --include='*.py' -E '(request\.files|UploadFile|FileField)' . | grep -v venv
-# → allowed_extensions / content_type チェックがあるか確認
+# -> Verify allowed_extensions / content_type checks exist
 
-# パストラバーサル: ユーザー入力をファイル名に使用
+# Path traversal: User input used as filename
 grep -rn --include='*.py' -E '(os\.path\.join|Path)\(.*request\.' . | grep -v venv
 
-# Django FileField の upload_to 設定
+# Django FileField upload_to setting
 grep -rn --include='*.py' 'upload_to=' . | grep -v venv
 
-# ファイルサイズ制限の確認
+# File size limit verification
 grep -rn --include='*.py' -E '(MAX_UPLOAD_SIZE|FILE_UPLOAD_MAX|content_length)' . | grep -v venv
 ```
 
 ## Secret Management
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# ハードコードされた秘密鍵（B105, B106, B107）
+# Hardcoded secret keys (B105, B106, B107)
 grep -rn --include='*.py' \
   -E "(SECRET_KEY|API_KEY|PASSWORD|TOKEN)\s*=\s*['\"]" . | grep -v venv | grep -v test
 
-# .env ファイルの Git 追跡
+# .env file tracked by Git
 git ls-files .env .env.local .env.production 2>/dev/null
 
-# .env に含まれる秘密情報
+# Secrets contained in .env
 grep -iE '(SECRET|PASSWORD|TOKEN|API_KEY|PRIVATE)' .env* 2>/dev/null
 
-# settings.py での DEBUG 設定
+# DEBUG setting in settings.py
 grep -rn --include='*.py' 'DEBUG\s*=\s*True' . | grep -v venv | grep -v test
 
-# python-dotenv の使用確認
+# Verify usage of python-dotenv
 grep -rn --include='*.py' 'load_dotenv' . | grep -v venv
 ```
 
-## Django 固有のセキュリティ設定
+## Django-Specific Security Settings
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# DEBUG モード（本番で True は Critical）
+# DEBUG mode (True in production is Critical)
 grep -rn 'DEBUG\s*=\s*True' --include='settings.py' . | grep -v venv
 
-# ALLOWED_HOSTS が空またはワイルドカード
+# ALLOWED_HOSTS empty or wildcard
 grep -rn 'ALLOWED_HOSTS' --include='settings.py' . | grep -v venv
 
-# SECRET_KEY のハードコード
+# Hardcoded SECRET_KEY
 grep -rn 'SECRET_KEY\s*=' --include='settings.py' . | grep -v venv
 
-# セキュリティ関連の設定確認
+# Security-related settings verification
 grep -rn --include='settings.py' \
   -E '(SECURE_SSL_REDIRECT|SECURE_HSTS|SESSION_COOKIE_SECURE|CSRF_COOKIE_SECURE|SECURE_BROWSER_XSS_FILTER|X_FRAME_OPTIONS)' . | grep -v venv
 
-# セキュリティ Middleware の順序
+# Security Middleware ordering
 grep -A 20 'MIDDLEWARE' --include='settings.py' -rn . | grep -v venv
 ```
 
-| 設定項目 | 推奨値 | リスク |
-|----------|--------|--------|
-| `DEBUG` | `False` | デバッグ情報の露出、フルトレースバック |
-| `ALLOWED_HOSTS` | 具体的なドメイン | Host ヘッダー攻撃 |
-| `SECRET_KEY` | 環境変数から取得 | セッション偽造、CSRF バイパス |
-| `SECURE_SSL_REDIRECT` | `True` | HTTP での通信傍受 |
-| `SESSION_COOKIE_SECURE` | `True` | Cookie の平文送信 |
-| `CSRF_COOKIE_SECURE` | `True` | CSRF トークンの平文送信 |
-| `SECURE_HSTS_SECONDS` | `31536000` | HTTPS ダウングレード |
+| Setting | Recommended Value | Risk |
+|---------|-------------------|------|
+| `DEBUG` | `False` | Exposure of debug information, full tracebacks |
+| `ALLOWED_HOSTS` | Specific domains | Host header attacks |
+| `SECRET_KEY` | Retrieved from environment variable | Session forgery, CSRF bypass |
+| `SECURE_SSL_REDIRECT` | `True` | Interception of HTTP traffic |
+| `SESSION_COOKIE_SECURE` | `True` | Cookie sent in plaintext |
+| `CSRF_COOKIE_SECURE` | `True` | CSRF token sent in plaintext |
+| `SECURE_HSTS_SECONDS` | `31536000` | HTTPS downgrade |
 
-## FastAPI 固有のセキュリティ
+## FastAPI-Specific Security
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# 認証なしのエンドポイント
+# Endpoints without authentication
 grep -rn --include='*.py' -E '@(app|router)\.(get|post|put|delete)' . | grep -v venv
-# → Depends() による認証チェックがあるか確認
+# -> Verify authentication checks via Depends() exist
 
-# Pydantic モデルのバリデーション
+# Pydantic model validation
 grep -rn --include='*.py' -E 'class \w+\(BaseModel\)' . | grep -v venv
 
-# レスポンスモデルの指定（データ漏洩防止）
+# Response model specification (prevent data leakage)
 grep -rn --include='*.py' 'response_model=' . | grep -v venv
 
-# CORS の設定
+# CORS configuration
 grep -rn --include='*.py' -A5 'CORSMiddleware' . | grep -v venv
 ```
 
-## Flask 固有のセキュリティ
+## Flask-Specific Security
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# Flask debug モード（本番で True は Critical）
+# Flask debug mode (True in production is Critical)
 grep -rn --include='*.py' -E '(app\.run\(.*debug\s*=\s*True|app\.debug\s*=\s*True)' . | grep -v venv
 
-# Flask SECRET_KEY の設定
+# Flask SECRET_KEY setting
 grep -rn --include='*.py' "app.secret_key\s*=\s*['\"]" . | grep -v venv
 
-# Flask セッション設定
+# Flask session settings
 grep -rn --include='*.py' -E '(SESSION_COOKIE_SECURE|SESSION_COOKIE_HTTPONLY|PERMANENT_SESSION_LIFETIME)' . | grep -v venv
 
-# Flask-Talisman（セキュリティヘッダー）の使用
+# Usage of Flask-Talisman (security headers)
 grep -rn --include='*.py' 'Talisman' . | grep -v venv
 ```
 
 ## Dependency Security
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# 既知の脆弱性チェック
+# Known vulnerability check
 pip-audit 2>/dev/null || echo "pip-audit not installed"
 safety check --file requirements.txt 2>/dev/null || echo "safety not installed"
 
-# Bandit による静的解析
+# Static analysis with Bandit
 bandit -r . -ll 2>/dev/null || echo "bandit not installed"
 
-# requirements.txt でバージョン固定されていない依存
+# Dependencies without pinned versions in requirements.txt
 grep -E '^[a-zA-Z]' requirements.txt 2>/dev/null | grep -v '=='
 
-# setup.py / pyproject.toml の依存確認
+# Dependency check in setup.py / pyproject.toml
 grep -A 50 'install_requires' setup.py 2>/dev/null
 grep -A 50 '\[project\]' pyproject.toml 2>/dev/null | grep -A 30 'dependencies'
 ```
 
-## Bandit ルールマッピング
+## Bandit Rule Mapping
 
-| Bandit ID | 内容 | 深刻度 |
-|-----------|------|--------|
-| B101 | assert の使用（本番では無効化される） | Low |
-| B105-B107 | ハードコードされたパスワード / 秘密鍵 | Medium |
-| B301 | pickle の使用 | High |
-| B302 | marshal の使用 | High |
-| B307 | eval() の使用 | High |
-| B501 | SSL 証明書検証の無効化 | High |
-| B506 | yaml.load() の安全でない使用 | High |
+| Bandit ID | Description | Severity |
+|-----------|-------------|----------|
+| B101 | Usage of assert (disabled in production) | Low |
+| B105-B107 | Hardcoded passwords / secret keys | Medium |
+| B301 | Usage of pickle | High |
+| B302 | Usage of marshal | High |
+| B307 | Usage of eval() | High |
+| B501 | Disabling SSL certificate verification | High |
+| B506 | Unsafe usage of yaml.load() | High |
 | B602 | subprocess with shell=True | High |
-| B605 | os.system() の使用 | High |
-| B608 | SQL Injection（文字列フォーマット） | Medium |
-| B610 | Django extra() の使用 | Medium |
-| B701 | Jinja2 autoescape 無効 | High |
+| B605 | Usage of os.system() | High |
+| B608 | SQL Injection (string formatting) | Medium |
+| B610 | Usage of Django extra() | Medium |
+| B701 | Jinja2 autoescape disabled | High |
 
-## Python セキュリティチェックリスト
+## Python Security Checklist
 
-- [ ] SQL クエリがパラメータ化されている（文字列フォーマット不使用）
-- [ ] `eval()`, `exec()`, `os.system()` が使用されていない
-- [ ] `pickle.load()`, `yaml.load()` が安全なローダーを使用している
-- [ ] Django の `DEBUG = False` が本番設定で確認済み
-- [ ] `ALLOWED_HOSTS` が適切に設定されている
-- [ ] `SECRET_KEY` がハードコードされていない
-- [ ] 全エンドポイントに認証・認可チェックがある
-- [ ] CSRF 保護が有効（`@csrf_exempt` の使用が最小限）
-- [ ] ファイルアップロードに拡張子・サイズ制限がある
-- [ ] `.env` ファイルが Git 追跡されていない
-- [ ] `pip-audit` / `safety` で既知脆弱性がゼロ
-- [ ] Bandit の High 以上の警告がゼロ
-- [ ] セキュリティヘッダー（CSP, HSTS 等）が設定されている
-- [ ] FastAPI の CORS 設定でワイルドカードオリジンが使用されていない
-- [ ] Flask の debug モードが本番で無効
-- [ ] Jinja2 で autoescape が有効
+- [ ] SQL queries are parameterized (no string formatting used)
+- [ ] `eval()`, `exec()`, `os.system()` are not used
+- [ ] `pickle.load()`, `yaml.load()` use safe loaders
+- [ ] Django `DEBUG = False` is confirmed in production settings
+- [ ] `ALLOWED_HOSTS` is properly configured
+- [ ] `SECRET_KEY` is not hardcoded
+- [ ] All endpoints have authentication and authorization checks
+- [ ] CSRF protection is enabled (usage of `@csrf_exempt` is minimized)
+- [ ] File uploads have extension and size restrictions
+- [ ] `.env` files are not tracked by Git
+- [ ] Zero known vulnerabilities via `pip-audit` / `safety`
+- [ ] Zero Bandit warnings at High severity or above
+- [ ] Security headers (CSP, HSTS, etc.) are configured
+- [ ] FastAPI CORS settings do not use wildcard origins
+- [ ] Flask debug mode is disabled in production
+- [ ] Jinja2 has autoescape enabled

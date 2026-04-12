@@ -1,69 +1,69 @@
 # Vercel Security Testing Reference
 
-Vercel のインフラ・設定レベルのセキュリティ検査ガイド。
-CLI/API で取得可能な項目と、Chrome MCP によるダッシュボード検査を組み合わせる。
+Infrastructure and configuration-level security testing guide for Vercel.
+Combines items that can be retrieved via CLI/API with dashboard inspection via Chrome MCP.
 
-## CLI による自動検査
+## CLI-Based Automated Inspection
 
-### 環境変数の監査
+### Environment Variable Audit
 
 ```bash
-# 全環境の環境変数を一覧
+# List environment variables for all environments
 vercel env ls production
 vercel env ls preview
 vercel env ls development
 
-# NEXT_PUBLIC_ プレフィックスで機密情報が露出していないか確認
+# Check if sensitive information is exposed via NEXT_PUBLIC_ prefix
 vercel env ls production 2>/dev/null | grep -iE 'NEXT_PUBLIC_.*(SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL)'
 ```
 
-**検出すべきパターン**:
-- `NEXT_PUBLIC_` に含まれる秘密鍵（`sk_`, `secret`, `password`）
-- Production と Preview で同一の API キー（本番 DB への誤アクセスリスク）
-- `sensitive` フラグが未設定の機密変数
+**Patterns to detect**:
+- Secret keys included in `NEXT_PUBLIC_` (`sk_`, `secret`, `password`)
+- Same API keys used in Production and Preview (risk of accidental access to production DB)
+- Sensitive variables without the `sensitive` flag set
 
-### デプロイメント検査
+### Deployment Inspection
 
 ```bash
-# 最新デプロイの詳細確認
+# Check details of the latest deployment
 vercel inspect $(vercel ls --json 2>/dev/null | jq -r '.[0].url') 2>/dev/null
 
-# デプロイメント一覧（不要な古いデプロイの確認）
+# List deployments (check for unnecessary old deployments)
 vercel ls --json 2>/dev/null | jq '.[] | {url, state, created}'
 ```
 
-### ドメイン・証明書
+### Domains and Certificates
 
 ```bash
-# ドメイン一覧
+# List domains
 vercel domains ls
 
-# SSL 証明書の確認
+# Check SSL certificates
 vercel certs ls
 ```
 
-### vercel.json の静的解析
+### Static Analysis of vercel.json
 
 ```bash
-# vercel.json のセキュリティヘッダー確認
+# Check security headers in vercel.json
 cat vercel.json 2>/dev/null | jq '.headers'
 
-# public フラグ（ビルドログ・ソース露出）
+# public flag (exposes build logs and source)
 cat vercel.json 2>/dev/null | jq '.public'
 ```
 
-## vercel.json 必須セキュリティヘッダー
+## Required Security Headers in vercel.json
 
-以下のヘッダーが設定されているか確認する:
+Verify the following headers are configured:
 
-| ヘッダー | 推奨値 | リスク |
-|----------|--------|--------|
-| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` | HTTPS ダウングレード |
-| `Content-Security-Policy` | `default-src 'self'` + 必要なソース | XSS |
-| `X-Frame-Options` | `DENY` | クリックジャッキング |
-| `X-Content-Type-Options` | `nosniff` | MIME スニッフィング |
-| `Referrer-Policy` | `strict-origin-when-cross-origin` | 情報漏洩 |
-| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | ブラウザ機能悪用 |
+| Header | Recommended | Risk |
+|--------|-------------|------|
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` | HTTPS downgrade |
+| `Content-Security-Policy` | `default-src 'self'` + required sources | XSS |
+| `X-Frame-Options` | `DENY` | Clickjacking |
+| `X-Content-Type-Options` | `nosniff` | MIME sniffing |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Information leakage |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | Browser feature abuse |
 
 ## Chrome MCP Dashboard Inspection
 
@@ -150,29 +150,29 @@ mcp__chrome-devtools__take_snapshot()    → extract setting values
 | Deploy Hooks | No unnecessary hooks exposed | Dashboard → Git → remove unused deploy hooks |
 | Require Verified Commits | Enabled (GitHub only) | Dashboard → Git → toggle ON |
 
-## よくある設定ミス
+## Common Misconfigurations
 
-| 深刻度 | 設定ミス | 影響 |
-|--------|----------|------|
-| Critical | `NEXT_PUBLIC_` に秘密鍵 | クライアント JS で鍵が公開 |
-| Critical | Preview にプロダクション API キー | Preview 経由で本番 DB にアクセス |
-| High | セキュリティヘッダー未設定 | XSS、クリックジャッキング |
-| High | Git Fork Protection 無効 | fork PR から環境変数漏洩 |
-| High | Build Logs/Source Protection 無効 | ソースコードとビルドログが公開 |
-| Medium | Preview の Deployment Protection なし | 未公開機能が外部公開 |
-| Medium | Firewall ルールなし | レート制限なしで認証エンドポイント露出 |
-| Medium | Deploy Hook の URL 漏洩 | 第三者がデプロイをトリガー可能 |
-| Low | Deployment Retention 未設定 | 古いデプロイが不要に残存 |
+| Severity | Misconfiguration | Impact |
+|----------|------------------|--------|
+| Critical | Secret keys in `NEXT_PUBLIC_` | Keys exposed in client JS |
+| Critical | Production API keys in Preview | Access to production DB via Preview |
+| High | Security headers not configured | XSS, clickjacking |
+| High | Git Fork Protection disabled | Environment variable leakage from fork PRs |
+| High | Build Logs/Source Protection disabled | Source code and build logs exposed publicly |
+| Medium | No Deployment Protection for Preview | Unreleased features exposed externally |
+| Medium | No Firewall rules | Auth endpoints exposed without rate limiting |
+| Medium | Deploy Hook URL leaked | Third parties can trigger deployments |
+| Low | Deployment Retention not configured | Old deployments remain unnecessarily |
 
-## Vercel REST API による自動検査
+## Automated Inspection via Vercel REST API
 
 ```bash
-# 環境変数の一覧取得（API 経由）
+# List environment variables (via API)
 curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
   "https://api.vercel.com/v10/projects/$PROJECT_ID/env?teamId=$TEAM_ID" | \
   jq '.envs[] | {key, target, type}'
 
-# Firewall 設定の確認
+# Check Firewall configuration
 curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
   "https://api.vercel.com/v1/security/firewall/config?projectId=$PROJECT_ID&teamId=$TEAM_ID"
 ```

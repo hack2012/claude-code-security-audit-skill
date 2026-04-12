@@ -1,312 +1,312 @@
 # Flutter Security Testing Reference
 
-Flutter/Dart アプリケーション向けセキュリティ検査ガイド。OWASP MASVS v2 に基づくクロスプラットフォーム固有のリスクを網羅。
+Security inspection guide for Flutter/Dart applications. Covers cross-platform specific risks based on OWASP MASVS v2.
 
-## データ保存
+## Data Storage
 
-### 検査対象
+### Inspection Targets
 
-- **SharedPreferences**: 機密データの平文保存（`shared_preferences` パッケージ）
-- **flutter_secure_storage**: Keychain / KeyStore を利用した暗号化保存の推奨
-- **sqflite**: SQLite データベースの暗号化有無
-- **Hive / Isar**: ローカル DB への機密データ保存
-- **ファイル保存**: `path_provider` による一時/永続ファイルの保護
-- **ログ出力**: `print` / `debugPrint` / `log` での機密データ出力
-- **クリップボード**: `Clipboard.setData` による機密データコピー
+- **SharedPreferences**: Storing sensitive data in plaintext (`shared_preferences` package)
+- **flutter_secure_storage**: Recommended encrypted storage using Keychain / KeyStore
+- **sqflite**: Presence of SQLite database encryption
+- **Hive / Isar**: Storing sensitive data in local databases
+- **File Storage**: Protection of temporary/persistent files via `path_provider`
+- **Log Output**: Sensitive data output via `print` / `debugPrint` / `log`
+- **Clipboard**: Copying sensitive data via `Clipboard.setData`
 
 ```bash
-# SharedPreferences への機密データ保存
+# Sensitive data storage in SharedPreferences
 grep -rn --include='*.dart' \
   -E '(SharedPreferences|\.setString|\.setInt|\.setBool)' . | \
   grep -iE '(password|token|secret|key|credential|session|auth|pin)'
 
-# flutter_secure_storage の使用確認（推奨パターン）
+# Verify use of flutter_secure_storage (recommended pattern)
 grep -rn --include='*.dart' \
   -E '(FlutterSecureStorage|secureStorage|\.write\(key:|\.read\(key:)' .
 
-# sqflite の使用と暗号化確認
+# Check sqflite usage and encryption
 grep -rn --include='*.dart' \
   -E '(openDatabase|getDatabasesPath|sqflite|sqflite_sqlcipher)' .
 
-# pubspec.yaml での sqflite / sqlcipher 依存
+# sqflite / sqlcipher dependencies in pubspec.yaml
 grep -n -E '(sqflite|sqflite_sqlcipher|flutter_secure_storage|hive|isar)' pubspec.yaml
 
-# ログ出力の機密データ
+# Sensitive data in log output
 grep -rn --include='*.dart' \
   -E '(print\(|debugPrint\(|log\(|logger\.)' . | \
   grep -iE '(password|token|secret|key|credential|bearer|session)'
 
-# ファイル保存
+# File storage
 grep -rn --include='*.dart' \
   -E '(File\(|writeAsString|writeAsBytes|getTemporaryDirectory|getApplicationDocumentsDirectory)' .
 
-# クリップボードへのコピー
+# Copying to clipboard
 grep -rn --include='*.dart' \
   -E '(Clipboard\.setData|ClipboardData)' .
 ```
 
-## 暗号
+## Cryptography
 
-### 検査対象
+### Inspection Targets
 
-- **弱いアルゴリズム**: MD5, SHA1（署名用途）, DES, RC4
-- **pointycastle / encrypt**: 暗号パッケージの適切な使用
-- **ハードコードされた鍵**: Dart コード内の暗号鍵・IV・ソルト
-- **乱数生成**: `Random()` の暗号用途使用（`Random.secure()` を推奨）
-- **鍵管理**: 鍵の安全な生成と保管
+- **Weak Algorithms**: MD5, SHA1 (for signature purposes), DES, RC4
+- **pointycastle / encrypt**: Proper use of cryptographic packages
+- **Hardcoded Keys**: Cryptographic keys, IVs, and salts in Dart code
+- **Random Number Generation**: Use of `Random()` for cryptographic purposes (`Random.secure()` recommended)
+- **Key Management**: Secure generation and storage of keys
 
 ```bash
-# 弱い暗号アルゴリズム
+# Weak cryptographic algorithms
 grep -rn --include='*.dart' \
   -iE '(md5|sha1|MD5|SHA1|DES|RC4|\.convert\(.*md5|\.convert\(.*sha1)' .
 
-# ハードコードされた暗号鍵
+# Hardcoded cryptographic keys
 grep -rn --include='*.dart' \
   -E "(const|final|var)\s+(key|secret|iv|nonce|salt|aesKey|encryptionKey)\s*=\s*['\"][^'\"]{8,}['\"]" .
 
-# 暗号パッケージの使用
+# Use of cryptographic packages
 grep -rn --include='*.dart' \
   -E '(import.*pointycastle|import.*encrypt|import.*crypto|AES|RSA|Encrypter|IV\.fromLength)' .
 
-# 安全でない乱数生成
+# Insecure random number generation
 grep -rn --include='*.dart' \
   -E 'Random\(\)' . | grep -v 'Random\.secure'
 
-# pubspec.yaml での暗号関連依存
+# Cryptography-related dependencies in pubspec.yaml
 grep -n -E '(pointycastle|encrypt|crypto|cryptography)' pubspec.yaml
 ```
 
-## ネットワーク
+## Network
 
-### 検査対象
+### Inspection Targets
 
-- **http / dio パッケージ**: HTTPS の使用、Cleartext 通信の検出
-- **Certificate Pinning**: `SecurityContext` や dio インターセプターによるピン留め
-- **プロキシ検出**: 中間者攻撃への対策
-- **API キーの露出**: リクエストヘッダー・URL パラメータ内のキー
-- **badCertificateCallback**: 証明書検証の無効化
+- **http / dio Packages**: Use of HTTPS, detection of cleartext communication
+- **Certificate Pinning**: Pinning via `SecurityContext` or dio interceptors
+- **Proxy Detection**: Countermeasures against man-in-the-middle attacks
+- **API Key Exposure**: Keys in request headers and URL parameters
+- **badCertificateCallback**: Disabling certificate verification
 
 ```bash
-# HTTP（非 HTTPS）URL の使用
+# Use of HTTP (non-HTTPS) URLs
 grep -rn --include='*.dart' \
   -E "http://[^l][^o][^c][^a][^l]" . | grep -v '// '
 
-# dio / http パッケージの使用
+# Use of dio / http packages
 grep -rn --include='*.dart' \
   -E '(import.*package:dio|import.*package:http/|Dio\(|http\.Client|HttpClient)' .
 
-# 証明書検証の無効化（badCertificateCallback で true を返す = 危険）
+# Disabling certificate verification (returning true in badCertificateCallback = dangerous)
 grep -rn --include='*.dart' \
   -E '(badCertificateCallback|onBadCertificate)' .
 
-# Certificate Pinning 実装
+# Certificate Pinning implementation
 grep -rn --include='*.dart' \
   -E '(SecurityContext|setTrustedCertificates|clientCertificate|certificatePinning)' .
 
-# API キーのヘッダー埋め込み
+# API key embedding in headers
 grep -rn --include='*.dart' \
   -E "(headers|Header).*['\"]?(Authorization|X-Api-Key|api[_-]?key)['\"]?" . | \
   grep -v 'TODO\|FIXME'
 
-# プロキシ設定
+# Proxy settings
 grep -rn --include='*.dart' \
   -E '(findProxy|HttpClient\..*proxy|PROXY|badCertificateCallback.*true)' .
 
-# Android Network Security Config の参照
+# Android Network Security Config reference
 find . -path '*/android/*' -name 'network_security_config.xml' \
   -exec cat {} \;
 
-# iOS ATS 設定
+# iOS ATS settings
 find . -path '*/ios/*' -name 'Info.plist' -not -path '*/Pods/*' \
   -exec grep -A 5 'NSAppTransportSecurity' {} +
 ```
 
-## Platform Channel セキュリティ
+## Platform Channel Security
 
-### 検査対象
+### Inspection Targets
 
-- **MethodChannel**: ネイティブコードとの通信内容の検証
-- **EventChannel**: ストリームデータの機密性
-- **BasicMessageChannel**: メッセージの暗号化・検証
-- **ネイティブコードインジェクション**: チャネル名のハードコード・偽装リスク
-- **データシリアライゼーション**: チャネル経由のデータ型安全性
+- **MethodChannel**: Validation of communication content with native code
+- **EventChannel**: Sensitivity of stream data
+- **BasicMessageChannel**: Message encryption and validation
+- **Native Code Injection**: Hardcoded channel names and spoofing risk
+- **Data Serialization**: Type safety of data passed through channels
 
 ```bash
-# MethodChannel の定義
+# MethodChannel definitions
 grep -rn --include='*.dart' \
   -E '(MethodChannel|EventChannel|BasicMessageChannel)\s*\(' .
 
-# チャネル名のハードコード
+# Hardcoded channel names
 grep -rn --include='*.dart' \
   -E "(MethodChannel|EventChannel)\s*\(\s*['\"]" .
 
-# ネイティブ側のチャネル実装（Kotlin）
+# Native-side channel implementation (Kotlin)
 grep -rn --include='*.kt' \
   -E '(MethodChannel|FlutterMethodChannel|setMethodCallHandler)' .
 
-# ネイティブ側のチャネル実装（Swift）
+# Native-side channel implementation (Swift)
 grep -rn --include='*.swift' \
   -E '(FlutterMethodChannel|FlutterEventChannel|FlutterBasicMessageChannel)' .
 
-# チャネル経由の機密データ
+# Sensitive data through channels
 grep -rn --include='*.dart' \
   -E 'invokeMethod.*' . | \
   grep -iE '(password|token|secret|key|credential|auth)'
 ```
 
-## コード保護
+## Code Protection
 
-### 検査対象
+### Inspection Targets
 
-- **難読化**: `--obfuscate` フラグと `--split-debug-info` の使用
-- **デバッグモード検出**: `kDebugMode` / `kReleaseMode` / `kProfileMode` の使用
-- **assert 文**: Release ビルドでの assert 動作確認
-- **デバッグコードの残存**: `debugPrint`, `print`, `developer.log` の残存
-- **ソースマップ**: デバッグ情報の本番公開リスク
+- **Obfuscation**: Use of `--obfuscate` flag and `--split-debug-info`
+- **Debug Mode Detection**: Use of `kDebugMode` / `kReleaseMode` / `kProfileMode`
+- **Assert Statements**: Confirm assert behavior in Release builds
+- **Remaining Debug Code**: Remaining `debugPrint`, `print`, `developer.log`
+- **Source Maps**: Risk of exposing debug information in production
 
 ```bash
-# 難読化設定の確認（build コマンド）
+# Verify obfuscation settings (build command)
 find . -name 'Makefile' -o -name '*.sh' -o -name '*.yaml' -o -name '*.yml' | \
   xargs grep -l 'obfuscate\|split-debug-info' 2>/dev/null
 
-# デバッグモード判定
+# Debug mode detection
 grep -rn --include='*.dart' \
   -E '(kDebugMode|kReleaseMode|kProfileMode|Foundation\.kDebugMode)' .
 
-# デバッグ専用コードのガード確認
+# Verify debug-only code is guarded
 grep -rn --include='*.dart' -B 1 \
   -E '(print\(|debugPrint\(|developer\.log\()' . | \
   grep -v 'kDebugMode\|assert\|// '
 
-# assert 文の確認
+# Check assert statements
 grep -rn --include='*.dart' \
   -E '^\s*assert\(' .
 
-# Dart DevTools / Observatory の設定
+# Dart DevTools / Observatory settings
 grep -rn --include='*.dart' \
   -E '(DevTools|Observatory|debugger\(\)|developer\.)' .
 ```
 
-## WebView セキュリティ
+## WebView Security
 
-### 検査対象
+### Inspection Targets
 
-- **webview_flutter**: JavaScript の有効化設定
-- **JavaScriptChannel**: ネイティブブリッジの入力検証
-- **NavigationDelegate**: URL フィルタリングの実装
-- **ローカルファイルアクセス**: file:// スキームの制御
+- **webview_flutter**: JavaScript enable settings
+- **JavaScriptChannel**: Input validation for native bridge
+- **NavigationDelegate**: URL filtering implementation
+- **Local File Access**: Control of file:// scheme
 
 ```bash
-# WebView の JavaScript 有効化
+# WebView JavaScript enabled
 grep -rn --include='*.dart' \
   -E '(JavascriptMode\.unrestricted|javaScriptMode.*JavaScriptMode\.unrestricted|WebView\(|WebViewController|InAppWebView)' .
 
-# JavaScriptChannel の定義
+# JavaScriptChannel definitions
 grep -rn --include='*.dart' \
   -E '(JavascriptChannel|JavaScriptChannel|addJavaScriptChannel|onMessageReceived)' .
 
-# NavigationDelegate のフィルタリング
+# NavigationDelegate filtering
 grep -rn --include='*.dart' \
   -E '(NavigationDelegate|navigationDelegate|onNavigationRequest|setNavigationDelegate)' .
 
-# WebView でのローカルファイル読み込み
+# Local file loading in WebView
 grep -rn --include='*.dart' \
   -E '(loadFile|loadFlutterAsset|file://|loadHtmlString)' .
 
-# pubspec.yaml の WebView 依存
+# WebView dependencies in pubspec.yaml
 grep -n -E '(webview_flutter|flutter_inappwebview|flutter_webview_plugin)' pubspec.yaml
 ```
 
-## State Management とメモリ
+## State Management and Memory
 
-### 検査対象
+### Inspection Targets
 
-- **機密データの State 保持**: Provider / Riverpod / BLoC での機密データ管理
-- **メモリクリーンアップ**: dispose 時の機密データ消去
-- **グローバル状態**: シングルトンやグローバル変数での機密データ保持
-- **スクリーンショット保護**: バックグラウンド遷移時のデータ保護
+- **Sensitive Data in State**: Managing sensitive data in Provider / Riverpod / BLoC
+- **Memory Cleanup**: Clearing sensitive data on dispose
+- **Global State**: Holding sensitive data in singletons or global variables
+- **Screenshot Protection**: Data protection on background transition
 
 ```bash
-# State 内の機密データ
+# Sensitive data in State
 grep -rn --include='*.dart' \
   -E '(StateNotifier|ChangeNotifier|BlocProvider|Cubit|Provider)' . | \
   grep -iE '(password|token|secret|credential|auth)'
 
-# dispose メソッドの実装確認
+# Verify dispose method implementation
 grep -rn --include='*.dart' \
   -E '(void\s+dispose\(\)|@override.*dispose)' .
 
-# グローバル変数での機密データ
+# Sensitive data in global variables
 grep -rn --include='*.dart' \
   -E '^(final|var|late)\s+\w*(token|secret|password|key|credential)' .
 
-# WidgetsBindingObserver（ライフサイクル監視）
+# WidgetsBindingObserver (lifecycle monitoring)
 grep -rn --include='*.dart' \
   -E '(WidgetsBindingObserver|didChangeAppLifecycleState|AppLifecycleState)' .
 ```
 
-## ビルドセキュリティ
+## Build Security
 
-### 検査対象
+### Inspection Targets
 
-- **API キーの Dart コード埋め込み**: ソースコード内のシークレット
-- **.env ファイル**: `flutter_dotenv` の使用と `.gitignore` 設定
-- **--dart-define**: ビルド時の環境変数注入
-- **アセットファイル**: `assets/` ディレクトリ内の機密ファイル
-- **pubspec.yaml**: 不要な依存・古い依存の検出
+- **API Keys Embedded in Dart Code**: Secrets in source code
+- **.env Files**: Use of `flutter_dotenv` and `.gitignore` configuration
+- **--dart-define**: Environment variable injection at build time
+- **Asset Files**: Sensitive files in the `assets/` directory
+- **pubspec.yaml**: Detection of unnecessary or outdated dependencies
 
 ```bash
-# Dart コード内の API キー・シークレット
+# API keys and secrets in Dart code
 grep -rn --include='*.dart' \
   -E "(const|final)\s+\w*(apiKey|apiSecret|appKey|appSecret|clientSecret|secretKey)\s*=\s*['\"][^'\"]+['\"]" .
 
-# .env ファイルの存在と .gitignore 確認
+# Check for .env files and .gitignore configuration
 find . -name '.env' -o -name '.env.*' -o -name 'env.dart' | head -10
 grep -n '\.env' .gitignore 2>/dev/null
 
-# flutter_dotenv の使用
+# Use of flutter_dotenv
 grep -rn --include='*.dart' \
   -E '(dotenv|DotEnv|flutter_dotenv|env\.get|env\[)' .
 
-# --dart-define の使用確認
+# Verify use of --dart-define
 find . -name 'Makefile' -o -name '*.sh' -o -name '*.yaml' | \
   xargs grep -l 'dart-define\|dart-define-from-file' 2>/dev/null
 
-# アセットディレクトリの機密ファイル
+# Sensitive files in asset directories
 find . -path '*/assets/*' \
   -iname '*.pem' -o -iname '*.key' -o -iname '*.p12' -o -iname '*.json' | \
   grep -iE '(key|secret|credential|service.account|google.services)'
 
-# 古い依存の検出
+# Detection of outdated dependencies
 grep -rn --include='pubspec.yaml' \
   -E '^\s+\w+:\s*\^?\d' . | head -20
 
-# Android の google-services.json
+# Android google-services.json
 find . -path '*/android/*' -name 'google-services.json' | head -5
 
-# iOS の GoogleService-Info.plist
+# iOS GoogleService-Info.plist
 find . -path '*/ios/*' -name 'GoogleService-Info.plist' | head -5
 ```
 
-## Flutter 検査チェックリスト
+## Flutter Inspection Checklist
 
-- [ ] SharedPreferences に機密データが平文で保存されていない（`flutter_secure_storage` を使用）
-- [ ] sqflite で暗号化が有効化されている（`sqflite_sqlcipher` の使用）
-- [ ] ログに機密データが出力されていない（Release ビルドで `print` 無効化）
-- [ ] HTTPS のみ使用され、HTTP 通信が存在しない
-- [ ] `badCertificateCallback` が本番で証明書検証を無効化していない
-- [ ] Certificate Pinning が実装されている
-- [ ] API キーが Dart コード内にハードコードされていない（`--dart-define` を使用）
-- [ ] `.env` ファイルが `.gitignore` に含まれている
-- [ ] `--obfuscate` と `--split-debug-info` が Release ビルドで使用されている
-- [ ] `kDebugMode` でデバッグコードが適切にガードされている
-- [ ] WebView で `JavascriptMode.unrestricted` が必要最小限に使用されている
-- [ ] JavaScriptChannel の入力が検証・サニタイズされている
-- [ ] Platform Channel 経由のデータが検証されている
-- [ ] State / Provider 内の機密データが dispose 時に消去されている
-- [ ] `Random.secure()` が暗号用途に使用されている
-- [ ] 弱い暗号アルゴリズム（MD5, SHA1, DES）が使用されていない
-- [ ] Android の `network_security_config.xml` で cleartext が禁止されている
-- [ ] iOS の ATS（App Transport Security）が有効化されている
-- [ ] `google-services.json` / `GoogleService-Info.plist` が適切に管理されている
-- [ ] 不要なパーミッションが `AndroidManifest.xml` / `Info.plist` から除去されている
+- [ ] Sensitive data is not stored in plaintext in SharedPreferences (use `flutter_secure_storage`)
+- [ ] Encryption is enabled for sqflite (use `sqflite_sqlcipher`)
+- [ ] Sensitive data is not output in logs (`print` disabled in Release builds)
+- [ ] Only HTTPS is used and no HTTP communication exists
+- [ ] `badCertificateCallback` does not disable certificate verification in production
+- [ ] Certificate Pinning is implemented
+- [ ] API keys are not hardcoded in Dart code (use `--dart-define`)
+- [ ] `.env` files are included in `.gitignore`
+- [ ] `--obfuscate` and `--split-debug-info` are used in Release builds
+- [ ] Debug code is properly guarded with `kDebugMode`
+- [ ] `JavascriptMode.unrestricted` is used minimally in WebView
+- [ ] JavaScriptChannel input is validated and sanitized
+- [ ] Data passed through Platform Channels is validated
+- [ ] Sensitive data in State / Provider is cleared on dispose
+- [ ] `Random.secure()` is used for cryptographic purposes
+- [ ] Weak cryptographic algorithms (MD5, SHA1, DES) are not used
+- [ ] Cleartext is prohibited in Android's `network_security_config.xml`
+- [ ] iOS ATS (App Transport Security) is enabled
+- [ ] `google-services.json` / `GoogleService-Info.plist` are properly managed
+- [ ] Unnecessary permissions have been removed from `AndroidManifest.xml` / `Info.plist`
