@@ -139,9 +139,17 @@ SELECT id, name, public, created_at FROM storage.buckets ORDER BY name;
 SELECT * FROM pg_policies WHERE schemaname = 'storage' ORDER BY tablename, policyname;
 ```
 
-## Chrome MCP によるダッシュボード検査
+## Chrome MCP Dashboard Inspection
 
-### URL パターン
+Dashboard-only settings that CLI/SQL cannot access. **Must run in main context** (not subagents).
+
+### Prerequisites
+
+1. Chrome is running and accessible by Chrome DevTools MCP
+2. User is logged in to Supabase Dashboard
+3. If not logged in, skip this section and note "Not Inspected — login required"
+
+### URL Patterns
 
 ```
 https://supabase.com/dashboard/project/{ref}/auth/providers
@@ -156,58 +164,82 @@ https://supabase.com/dashboard/project/{ref}/storage/buckets
 https://supabase.com/dashboard/project/{ref}/functions
 ```
 
-### Auth 設定検査
+### Step-by-Step Execution
+
+#### 1. Auth Providers
 
 ```
-navigate_page → /auth/providers
-take_screenshot → 有効なプロバイダーの証跡
+mcp__chrome-devtools__navigate_page(url: "https://supabase.com/dashboard/project/{ref}/auth/providers")
+mcp__chrome-devtools__take_screenshot()  → capture evidence
+mcp__chrome-devtools__take_snapshot()    → extract provider toggle states
 ```
 
-**確認項目**:
-- Email 確認が有効か
-- 不要な OAuth プロバイダーが有効になっていないか
-- MFA（TOTP/Phone）が有効か
+**Checks**:
+| Setting | Recommended | Remediation if Missing |
+|---------|-------------|----------------------|
+| Email confirmation | Enabled | Dashboard → Auth → Providers → Email → toggle "Confirm email" ON |
+| Unused OAuth providers | Disabled | Dashboard → Auth → Providers → disable unused providers |
+| MFA (TOTP/Phone) | Enabled | Dashboard → Auth → MFA → enable TOTP or Phone factor |
+
+#### 2. Session Settings
 
 ```
-navigate_page → /auth/sessions
-take_screenshot → セッション設定の証跡
+mcp__chrome-devtools__navigate_page(url: "https://supabase.com/dashboard/project/{ref}/auth/sessions")
+mcp__chrome-devtools__take_screenshot()  → capture evidence
+mcp__chrome-devtools__take_snapshot()    → extract session config values
 ```
 
-**確認項目**:
-- セッション有効期限が適切か（デフォルトより短く）
-- Inactivity timeout が設定されているか
-- Refresh token reuse detection が有効か
+**Checks**:
+| Setting | Recommended | Remediation if Missing |
+|---------|-------------|----------------------|
+| Session expiry | Shorter than default (e.g., 1 hour) | Dashboard → Auth → Sessions → reduce JWT expiry |
+| Inactivity timeout | Enabled | Dashboard → Auth → Sessions → set inactivity timeout |
+| Refresh token reuse detection | Enabled | Dashboard → Auth → Sessions → toggle ON |
+
+#### 3. Rate Limits
 
 ```
-navigate_page → /auth/rate-limits
-take_screenshot → レート制限の証跡
+mcp__chrome-devtools__navigate_page(url: "https://supabase.com/dashboard/project/{ref}/auth/rate-limits")
+mcp__chrome-devtools__take_screenshot()  → capture evidence
+mcp__chrome-devtools__take_snapshot()    → extract rate limit values
 ```
 
-**確認項目**:
-- サインアップ、ログイン、トークンリフレッシュのレート制限
+**Checks**:
+| Setting | Recommended | Remediation if Missing |
+|---------|-------------|----------------------|
+| Sign-up rate limit | Configured | Dashboard → Auth → Rate Limits → set sign-up limit |
+| Sign-in rate limit | Configured | Dashboard → Auth → Rate Limits → set sign-in limit |
+| Token refresh rate limit | Configured | Dashboard → Auth → Rate Limits → set token refresh limit |
 
-### Security Advisor 検査
-
-```
-navigate_page → /database/security-advisor
-take_screenshot → 全指摘事項の証跡
-take_snapshot → アクセシビリティツリーで詳細取得
-```
-
-**確認項目**:
-- 全ての Security lint 警告を確認
-- Critical/High の指摘が 0 件であること
-
-### API Settings 検査
+#### 4. Security Advisor
 
 ```
-navigate_page → /settings/api
-take_screenshot → API 設定の証跡
+mcp__chrome-devtools__navigate_page(url: "https://supabase.com/dashboard/project/{ref}/database/security-advisor")
+mcp__chrome-devtools__take_screenshot()  → capture all findings
+mcp__chrome-devtools__take_snapshot()    → extract finding details via accessibility tree
 ```
 
-**確認項目**:
-- `service_role` キーがクライアントコードに含まれていないか
-- Data API が不要な場合は無効化されているか
+**Checks**:
+| Setting | Recommended | Remediation if Missing |
+|---------|-------------|----------------------|
+| Critical findings | 0 items | Fix each Critical finding per Security Advisor guidance |
+| High findings | 0 items | Fix each High finding per Security Advisor guidance |
+| Lint warnings | Reviewed | Review and resolve or document accepted risks |
+
+#### 5. API Settings
+
+```
+mcp__chrome-devtools__navigate_page(url: "https://supabase.com/dashboard/project/{ref}/settings/api")
+mcp__chrome-devtools__take_screenshot()  → capture evidence
+mcp__chrome-devtools__take_snapshot()    → extract API config
+```
+
+**Checks**:
+| Setting | Recommended | Remediation if Missing |
+|---------|-------------|----------------------|
+| service_role key exposure | Not in client code | Verify via Grep (see static analysis section) |
+| Data API | Disabled if not needed | Dashboard → Settings → API → toggle Data API OFF |
+| JWT secret rotation | Rotated periodically | Dashboard → Settings → API → rotate JWT secret |
 
 ## よくある設定ミス
 
