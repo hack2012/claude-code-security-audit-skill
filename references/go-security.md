@@ -1,128 +1,128 @@
 # Go Security Testing Reference
 
-Go 固有の脆弱性パターンと検査ガイド。goroutine 安全性、unsafe パッケージ、Web フレームワーク対応。
+Vulnerability patterns and testing guide specific to Go. Covers goroutine safety, the unsafe package, and web framework support.
 
 ## SQL Injection
 
-### リスク
+### Risk
 
-`database/sql` パッケージの `Query()` / `Exec()` に文字列結合で SQL を渡すと SQL Injection が発生する。GORM や sqlx でも raw クエリ使用時は同様のリスクがある。
+SQL Injection occurs when SQL is passed to `Query()` / `Exec()` of the `database/sql` package via string concatenation. The same risk applies when using raw queries with GORM or sqlx.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# 文字列結合による SQL 構築
+# SQL construction via string concatenation
 grep -rn --include='*.go' \
   -E '(db\.(Query|Exec|QueryRow)\(.*(\+|fmt\.Sprintf|fmt\.Fprintf))' . | grep -v vendor
 
-# GORM raw クエリ
+# GORM raw queries
 grep -rn --include='*.go' -E '(\.Raw\(|\.Exec\().*(\+|fmt\.Sprintf)' . | grep -v vendor
 
-# sqlx raw クエリ
+# sqlx raw queries
 grep -rn --include='*.go' -E '(sqlx\.(Get|Select|Exec)|\.NamedExec)' . | grep -v vendor
 
-# fmt.Sprintf で SQL 構築（危険）
+# SQL construction via fmt.Sprintf (dangerous)
 grep -rn --include='*.go' 'fmt\.Sprintf.*SELECT\|fmt\.Sprintf.*INSERT\|fmt\.Sprintf.*UPDATE\|fmt\.Sprintf.*DELETE' . | grep -v vendor
 
-# プレースホルダの確認（安全なパターン）
+# Placeholder verification (safe pattern)
 grep -rn --include='*.go' -E '(db\.(Query|Exec|QueryRow)\(.*\$[0-9]|\?)' . | grep -v vendor
 ```
 
 ## Command Injection
 
-### リスク
+### Risk
 
-`os/exec` パッケージや `syscall` による外部コマンド実行にユーザー入力が含まれると任意コマンド実行が可能。
+Arbitrary command execution is possible when user input is included in external command execution via the `os/exec` package or `syscall`.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# os/exec の使用
+# Usage of os/exec
 grep -rn --include='*.go' -E '(exec\.Command\(|exec\.CommandContext\()' . | grep -v vendor
 
-# syscall.Exec の使用
+# Usage of syscall.Exec
 grep -rn --include='*.go' 'syscall\.Exec' . | grep -v vendor
 
-# ユーザー入力がコマンドに渡されるパターン
+# Pattern of user input passed to commands
 grep -rn --include='*.go' -E 'exec\.Command\(.*r\.(Form|URL|Body|Header)' . | grep -v vendor
 
-# sh -c による shell 経由の実行（特に危険）
+# Execution via sh -c (especially dangerous)
 grep -rn --include='*.go' -E 'exec\.Command\("(sh|bash|cmd)"' . | grep -v vendor
 ```
 
 ## Path Traversal
 
-### リスク
+### Risk
 
-`filepath.Join()` はパストラバーサルを防止しない（`../` を正規化するが、結合結果が意図したディレクトリ外を指す可能性がある）。
+`filepath.Join()` does not prevent path traversal (it normalizes `../` but the joined result may still point outside the intended directory).
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# filepath.Join にユーザー入力を使用
+# User input used in filepath.Join
 grep -rn --include='*.go' -E 'filepath\.Join\(.*r\.(Form|URL|Param)' . | grep -v vendor
 
-# os.Open / os.ReadFile にユーザー入力
+# User input in os.Open / os.ReadFile
 grep -rn --include='*.go' -E '(os\.Open|os\.ReadFile|ioutil\.ReadFile)\(' . | grep -v vendor
 
-# http.ServeFile（パストラバーサルリスク）
+# http.ServeFile (path traversal risk)
 grep -rn --include='*.go' 'http\.ServeFile' . | grep -v vendor
 
-# filepath.Clean によるサニタイズ確認
+# Verify sanitization via filepath.Clean
 grep -rn --include='*.go' 'filepath\.Clean' . | grep -v vendor
 
-# パスプレフィックスの検証
+# Path prefix validation
 grep -rn --include='*.go' 'strings\.HasPrefix' . | grep -v vendor | grep -i path
 ```
 
 ## Race Conditions
 
-### リスク
+### Risk
 
-goroutine 間で共有変数への同時アクセスはデータ競合を引き起こす。`-race` フラグによるテストで検出可能。
+Concurrent access to shared variables across goroutines causes data races. These can be detected with the `-race` flag during testing.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# goroutine の使用箇所
+# Goroutine usage locations
 grep -rn --include='*.go' 'go func\(' . | grep -v vendor
 
-# グローバル変数の変更（競合リスク）
+# Mutation of global variables (race condition risk)
 grep -rn --include='*.go' -E '^var\s+\w+\s+(map|slice|\[\])' . | grep -v vendor
 
-# sync パッケージの使用（適切な保護の確認）
+# Usage of sync package (verify proper protection)
 grep -rn --include='*.go' -E '(sync\.(Mutex|RWMutex|Map|WaitGroup|Once))' . | grep -v vendor
 
-# atomic パッケージの使用
+# Usage of atomic package
 grep -rn --include='*.go' 'atomic\.' . | grep -v vendor
 
-# channel の使用
+# Usage of channels
 grep -rn --include='*.go' -E 'make\(chan\s' . | grep -v vendor
 
-# race detector でテスト実行
+# Run tests with race detector
 # go test -race ./...
 ```
 
 ## Memory Safety (unsafe)
 
-### リスク
+### Risk
 
-`unsafe` パッケージはメモリ安全性を完全にバイパスする。バッファオーバーフロー、型安全性の破壊が可能。
+The `unsafe` package completely bypasses memory safety. Buffer overflows and type safety violations become possible.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# unsafe パッケージの使用
+# Usage of unsafe package
 grep -rn --include='*.go' '"unsafe"' . | grep -v vendor
 grep -rn --include='*.go' 'unsafe\.Pointer' . | grep -v vendor
 
-# reflect パッケージによる型操作
+# Type manipulation via reflect package
 grep -rn --include='*.go' 'reflect\.Value' . | grep -v vendor | grep -i 'unsafe\|pointer'
 
-# cgo の使用
+# Usage of cgo
 grep -rn --include='*.go' -E '(import "C"|/\*.*#include)' . | grep -v vendor
 
-# //go:linkname による非公開関数アクセス
+# Accessing unexported functions via //go:linkname
 grep -rn --include='*.go' '//go:linkname' . | grep -v vendor
 
 # //go:nosplit / //go:noescape
@@ -131,179 +131,179 @@ grep -rn --include='*.go' -E '//go:(nosplit|noescape)' . | grep -v vendor
 
 ## Cryptography
 
-### リスク
+### Risk
 
-`math/rand` は暗号学的に安全でない。弱いハッシュアルゴリズム（MD5, SHA1）をパスワードや署名に使用するのは危険。
+`math/rand` is not cryptographically secure. Using weak hash algorithms (MD5, SHA1) for passwords or signatures is dangerous.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# math/rand の使用（暗号用途は危険）
+# Usage of math/rand (dangerous for cryptographic purposes)
 grep -rn --include='*.go' '"math/rand"' . | grep -v vendor
 
-# crypto/rand の使用（安全）
+# Usage of crypto/rand (safe)
 grep -rn --include='*.go' '"crypto/rand"' . | grep -v vendor
 
-# 弱いハッシュ（MD5, SHA1）
+# Weak hashes (MD5, SHA1)
 grep -rn --include='*.go' -E '(md5\.(New|Sum)|sha1\.(New|Sum)|crypto\.MD5|crypto\.SHA1)' . | grep -v vendor
 
-# 固定の暗号鍵
+# Hardcoded cryptographic keys
 grep -rn --include='*.go' -E '([]byte\("|key\s*:?=\s*\[\]byte)' . | grep -v vendor | grep -v test
 
-# AES の ECB モード（危険）
+# AES in ECB mode (dangerous)
 grep -rn --include='*.go' 'cipher\.NewECB' . | grep -v vendor
 
-# 適切な暗号ライブラリの使用
+# Usage of proper cryptographic libraries
 grep -rn --include='*.go' -E '(golang\.org/x/crypto|crypto/aes|crypto/tls)' . | grep -v vendor
 ```
 
 ## HTTP Security
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# CORS 設定
+# CORS settings
 grep -rn --include='*.go' -E '(Access-Control-Allow-Origin|cors\.)' . | grep -v vendor
 
-# ワイルドカード CORS（危険）
+# Wildcard CORS (dangerous)
 grep -rn --include='*.go' -E "Allow-Origin.*\*|AllowAllOrigins.*true" . | grep -v vendor
 
-# HTTP タイムアウト設定の確認
+# HTTP timeout settings verification
 grep -rn --include='*.go' -E '(ReadTimeout|WriteTimeout|IdleTimeout|ReadHeaderTimeout)' . | grep -v vendor
 
-# タイムアウトなしの http.ListenAndServe（Slowloris 攻撃のリスク）
+# http.ListenAndServe without timeout (Slowloris attack risk)
 grep -rn --include='*.go' 'http\.ListenAndServe\(' . | grep -v vendor
 
-# TLS 設定
+# TLS settings
 grep -rn --include='*.go' -E '(tls\.Config|MinVersion|CipherSuites)' . | grep -v vendor
 
-# セキュリティヘッダーの設定
+# Security header settings
 grep -rn --include='*.go' -E '(X-Frame-Options|X-Content-Type|Strict-Transport|Content-Security-Policy)' . | grep -v vendor
 
-# Cookie の Secure / HttpOnly フラグ
+# Cookie Secure / HttpOnly flags
 grep -rn --include='*.go' -E '(http\.Cookie|Secure:|HttpOnly:)' . | grep -v vendor
 ```
 
 ## Input Validation
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# 整数オーバーフローリスク（strconv のエラーハンドリング）
+# Integer overflow risk (error handling in strconv)
 grep -rn --include='*.go' -E 'strconv\.(Atoi|ParseInt|ParseUint)' . | grep -v vendor
-# → エラーチェックがあるか確認
+# -> Verify error checks exist
 
-# ユーザー入力の直接使用
+# Direct use of user input
 grep -rn --include='*.go' -E 'r\.(FormValue|URL\.Query|PostFormValue|PathValue)\(' . | grep -v vendor
 
-# バリデーションライブラリの使用
+# Usage of validation libraries
 grep -rn --include='*.go' -E '(validator\.Validate|validate:"required)' . | grep -v vendor
 
-# JSON デコードのエラーハンドリング
+# Error handling for JSON decoding
 grep -rn --include='*.go' 'json\.Decode\|json\.Unmarshal' . | grep -v vendor
 ```
 
 ## Error Handling
 
-### リスク
+### Risk
 
-Go のエラーハンドリングでエラーを無視すると、セキュリティバグが潜む。また `panic` は DoS につながる。
+Ignoring errors in Go's error handling can lead to hidden security bugs. Additionally, `panic` can lead to DoS.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# エラーの無視（_ に代入）
+# Ignored errors (assigned to _)
 grep -rn --include='*.go' -E '(,\s*_\s*:?=|_\s*=.*err)' . | grep -v vendor | grep -v test
 
-# panic の使用（本番コードでは避けるべき）
+# Usage of panic (should be avoided in production code)
 grep -rn --include='*.go' 'panic\(' . | grep -v vendor | grep -v test
 
-# recover の使用確認
+# Verify usage of recover
 grep -rn --include='*.go' 'recover\(\)' . | grep -v vendor
 
-# log.Fatal（defer が実行されない）
+# log.Fatal (deferred functions are not executed)
 grep -rn --include='*.go' 'log\.Fatal' . | grep -v vendor
 
-# エラーメッセージに機密情報が含まれる可能性
+# Potential sensitive information in error messages
 grep -rn --include='*.go' -E '(fmt\.Errorf|errors\.New).*password\|secret\|token\|key' . | grep -v vendor
 ```
 
 ## Template Injection
 
-### リスク
+### Risk
 
-`text/template` は HTML エスケープを行わない。Web 出力には必ず `html/template` を使用する。
+`text/template` does not perform HTML escaping. Always use `html/template` for web output.
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# text/template の使用（Web 出力では XSS リスク）
+# Usage of text/template (XSS risk for web output)
 grep -rn --include='*.go' '"text/template"' . | grep -v vendor
 
-# html/template の使用（安全）
+# Usage of html/template (safe)
 grep -rn --include='*.go' '"html/template"' . | grep -v vendor
 
-# template.HTML() による明示的エスケープ無効化
+# Explicit escape disabling via template.HTML()
 grep -rn --include='*.go' 'template\.HTML\(' . | grep -v vendor
 
-# template.JS / template.URL の使用
+# Usage of template.JS / template.URL
 grep -rn --include='*.go' -E 'template\.(JS|URL|CSS)\(' . | grep -v vendor
 ```
 
 ## TLS Configuration
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# TLS の最小バージョン
+# TLS minimum version
 grep -rn --include='*.go' 'MinVersion' . | grep -v vendor
 
-# 非推奨の TLS バージョン（TLS 1.0, 1.1）
+# Deprecated TLS versions (TLS 1.0, 1.1)
 grep -rn --include='*.go' -E '(VersionTLS10|VersionTLS11|VersionSSL)' . | grep -v vendor
 
-# InsecureSkipVerify（証明書検証の無効化）
+# InsecureSkipVerify (disabling certificate verification)
 grep -rn --include='*.go' 'InsecureSkipVerify\s*:\s*true' . | grep -v vendor
 
-# 弱い暗号スイート
+# Weak cipher suites
 grep -rn --include='*.go' -E '(TLS_RSA_|TLS_ECDHE.*RC4|TLS_ECDHE.*3DES)' . | grep -v vendor
 ```
 
 ## Dependency Security
 
-### 検査パターン
+### Testing Patterns
 
 ```bash
-# go.sum の存在確認
+# Verify go.sum exists
 ls -la go.sum 2>/dev/null || echo "go.sum not found"
 
-# govulncheck による脆弱性チェック
+# Vulnerability check via govulncheck
 govulncheck ./... 2>/dev/null || echo "govulncheck not installed"
 
-# go.mod の依存バージョン確認
+# Dependency version check in go.mod
 cat go.mod 2>/dev/null | grep -E '^\t'
 
-# replace ディレクティブ（ローカルパッチの確認）
+# replace directives (verify local patches)
 grep 'replace' go.mod 2>/dev/null
 
-# 古い依存の確認
+# Check for outdated dependencies
 go list -m -u all 2>/dev/null | grep '\[' | head -20
 ```
 
-## Go セキュリティチェックリスト
+## Go Security Checklist
 
-- [ ] SQL クエリがプレースホルダ（`$1`, `?`）を使用している
-- [ ] `os/exec` にユーザー入力が直接渡されていない
-- [ ] `filepath.Join` の結果が許可ディレクトリ内であることを検証している
-- [ ] goroutine 間の共有変数が `sync.Mutex` / `sync.RWMutex` で保護されている
-- [ ] `unsafe` パッケージの使用が最小限で、レビュー済み
-- [ ] `crypto/rand` が暗号用途で使用されている（`math/rand` ではない）
-- [ ] HTTP サーバーにタイムアウトが設定されている
-- [ ] CORS がワイルドカードオリジンを許可していない
-- [ ] `text/template` が Web 出力に使用されていない
-- [ ] TLS 1.2 以上が設定されている
-- [ ] `InsecureSkipVerify` が本番コードで `true` になっていない
-- [ ] `panic` が本番コードの通常フローで使用されていない
-- [ ] エラーが適切にハンドリングされ、無視されていない
-- [ ] `govulncheck` で既知脆弱性がゼロ
-- [ ] `go.sum` がリポジトリにコミットされている
-- [ ] `-race` フラグでテストが通過している
+- [ ] SQL queries use placeholders (`$1`, `?`)
+- [ ] User input is not passed directly to `os/exec`
+- [ ] Results of `filepath.Join` are verified to be within allowed directories
+- [ ] Shared variables across goroutines are protected with `sync.Mutex` / `sync.RWMutex`
+- [ ] Usage of the `unsafe` package is minimal and reviewed
+- [ ] `crypto/rand` is used for cryptographic purposes (not `math/rand`)
+- [ ] HTTP servers have timeouts configured
+- [ ] CORS does not allow wildcard origins
+- [ ] `text/template` is not used for web output
+- [ ] TLS 1.2 or higher is configured
+- [ ] `InsecureSkipVerify` is not set to `true` in production code
+- [ ] `panic` is not used in normal flow of production code
+- [ ] Errors are properly handled and not ignored
+- [ ] Zero known vulnerabilities via `govulncheck`
+- [ ] `go.sum` is committed to the repository
+- [ ] Tests pass with the `-race` flag

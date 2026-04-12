@@ -1,39 +1,39 @@
 # Secret Scanning Reference
 
-Git 履歴、ビルド成果物、設定ファイルにおけるシークレット漏洩の検出ガイド。
+A guide for detecting secret leaks in Git history, build artifacts, and configuration files.
 
-## Git History（Git 履歴のスキャン）
+## Git History Scanning
 
-### リスク
+### Risk
 
-過去のコミットに含まれたシークレットは、`git log` や `git show` で復元可能。ファイルを削除しても Git 履歴からは消えない。
+Secrets contained in past commits can be recovered via `git log` or `git show`. Even if a file is deleted, it does not disappear from Git history.
 
-### 検査パターン
+### Inspection Patterns
 
 ```bash
-# gitleaks によるスキャン
+# Scan with gitleaks
 gitleaks detect --source . --verbose 2>/dev/null | head -50
 
-# trufflehog によるスキャン
+# Scan with trufflehog
 trufflehog git file://. --only-verified 2>/dev/null | head -50
 
-# git-secrets のインストール確認
+# Check if git-secrets is installed
 git secrets --scan 2>/dev/null
 
-# 直近のコミットでのシークレット検出
+# Detect secrets in recent commits
 git log --diff-filter=A --name-only --pretty=format: -10 2>/dev/null | \
   grep -iE '\.(env|pem|key|p12|pfx|jks|keystore|credentials)$'
 
-# .git/config にクレデンシャルが含まれていないか
+# Check if .git/config contains credentials
 grep -iE '(password|token|secret)' .git/config 2>/dev/null
 ```
 
-## Common Secret Patterns（シークレットパターン）
+## Common Secret Patterns
 
 ### AWS
 
 ```bash
-# AWS Access Key ID（AKIA で始まる 20 文字）
+# AWS Access Key ID (20 characters starting with AKIA)
 grep -rn -E 'AKIA[0-9A-Z]{16}' . --include='*.{ts,js,py,rb,go,java,yml,yaml,json,env,cfg,conf,toml}' \
   2>/dev/null | grep -v node_modules
 
@@ -43,24 +43,24 @@ grep -rn -E '['\''"][0-9a-zA-Z/+]{40}['\''"]' . \
   grep -iE '(secret|aws)' | grep -v node_modules
 ```
 
-### API トークン・キー
+### API Tokens & Keys
 
 ```bash
-# GitHub Token（ghp_, gho_, ghs_, ghr_, github_pat_）
+# GitHub Token (ghp_, gho_, ghs_, ghr_, github_pat_)
 grep -rn -E '(ghp_[0-9a-zA-Z]{36}|gho_[0-9a-zA-Z]{36}|ghs_[0-9a-zA-Z]{36}|ghr_[0-9a-zA-Z]{36}|github_pat_[0-9a-zA-Z_]{82})' \
   . 2>/dev/null | grep -v node_modules
 
-# Slack Token（xoxb-, xoxp-, xoxs-, xoxa-）
+# Slack Token (xoxb-, xoxp-, xoxs-, xoxa-)
 grep -rn -E 'xox[bpsa]-[0-9]{10,13}-[0-9a-zA-Z-]{20,}' \
   . 2>/dev/null | grep -v node_modules
 
-# OpenAI API Key（sk-）
+# OpenAI API Key (sk-)
 grep -rn -E 'sk-[0-9a-zA-Z]{20,}' . 2>/dev/null | grep -v node_modules
 
-# Anthropic API Key（sk-ant-）
+# Anthropic API Key (sk-ant-)
 grep -rn -E 'sk-ant-[0-9a-zA-Z-]{20,}' . 2>/dev/null | grep -v node_modules
 
-# Stripe Key（sk_live_, pk_live_）
+# Stripe Key (sk_live_, pk_live_)
 grep -rn -E '(sk_live_|pk_live_|rk_live_)[0-9a-zA-Z]{20,}' \
   . 2>/dev/null | grep -v node_modules
 
@@ -75,114 +75,114 @@ grep -rn -E 'SG\.[0-9A-Za-z\-_]{22}\.[0-9A-Za-z\-_]{43}' \
 grep -rn -E 'AC[a-z0-9]{32}' . 2>/dev/null | grep -v node_modules
 ```
 
-### 秘密鍵・証明書
+### Private Keys & Certificates
 
 ```bash
-# RSA / EC / SSH 秘密鍵
+# RSA / EC / SSH private keys
 grep -rn -E '-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----' \
   . 2>/dev/null | grep -v node_modules
 
-# .pem / .key ファイルの検出
+# Detect .pem / .key files
 find . -name '*.pem' -o -name '*.key' -o -name '*.p12' -o -name '*.pfx' \
   -o -name '*.jks' 2>/dev/null | grep -v node_modules
 
-# SSH 鍵ファイル
+# SSH key files
 find . -name 'id_rsa' -o -name 'id_ed25519' -o -name 'id_ecdsa' \
   2>/dev/null | grep -v node_modules
 ```
 
-### データベース接続文字列
+### Database Connection Strings
 
 ```bash
-# 接続文字列にパスワードが含まれているか
+# Check if connection strings contain passwords
 grep -rn -E '(postgres|mysql|mongodb|redis|amqp)://[^:]+:[^@]+@' \
   . 2>/dev/null | grep -v node_modules
 
-# DATABASE_URL にパスワードが含まれているか
+# Check if DATABASE_URL contains a password
 grep -rn 'DATABASE_URL' . 2>/dev/null | \
   grep -E '://[^:]+:[^@]+@' | grep -v node_modules
 ```
 
-### 汎用パターン
+### Generic Patterns
 
 ```bash
-# password / secret / token のハードコード
+# Hardcoded password / secret / token
 grep -rn --include='*.{ts,js,py,rb,go,java}' \
   -iE '(password|secret|token|api_key|apikey|api-key)\s*[:=]\s*['\''"][^'\''"{$]+['\''"]' \
   . 2>/dev/null | grep -v node_modules | grep -v -E '(test|spec|mock|example|placeholder)'
 
-# JWT トークンのハードコード
+# Hardcoded JWT tokens
 grep -rn -E 'eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}' \
   . 2>/dev/null | grep -v node_modules
 ```
 
-## Build Artifacts（ビルド成果物）
+## Build Artifacts
 
-### リスク
+### Risk
 
-Docker レイヤー、ソースマップ、コンパイル済みアセットにシークレットが含まれる場合がある。
+Secrets may be contained in Docker layers, source maps, and compiled assets.
 
 ```bash
-# Docker レイヤーでのシークレット検出
+# Detect secrets in Docker layers
 # docker history <image> --no-trunc 2>/dev/null | grep -iE '(secret|password|token|key)'
 
-# ソースマップの存在確認（シークレットが含まれる可能性）
+# Check for existence of source maps (may contain secrets)
 find . -name '*.map' -path '*/dist/*' -o -name '*.map' -path '*/build/*' \
   2>/dev/null | head -10
 
-# ソースマップが本番で公開されていないか
+# Check if source maps are exposed in production
 grep -rn 'productionBrowserSourceMaps\|sourcemap\|source-map' \
   next.config.* webpack.config.* vite.config.* 2>/dev/null
 
-# ビルド出力に .env が含まれていないか
+# Check if .env is included in build output
 find dist build out .next -name '.env*' 2>/dev/null
 ```
 
-## Environment Files（環境ファイル）
+## Environment Files
 
-### リスク
+### Risk
 
-`.env` ファイルが Git にコミットされたり、公開ディレクトリに配置されると、全シークレットが漏洩する。
+If `.env` files are committed to Git or placed in public directories, all secrets are leaked.
 
 ```bash
-# .env ファイルの一覧
+# List .env files
 find . -name '.env*' -not -path '*/node_modules/*' 2>/dev/null
 
-# .env ファイルが Git 追跡されているか（Critical）
+# Check if .env files are tracked by Git (Critical)
 git ls-files | grep -E '\.env'
 
-# .gitignore に .env が含まれているか
+# Check if .env is included in .gitignore
 grep -E '\.env' .gitignore 2>/dev/null
 
-# .env ファイル内のシークレット一覧
+# List secrets in .env files
 for f in $(find . -name '.env*' -not -path '*/node_modules/*' 2>/dev/null); do
   echo "=== $f ==="
   grep -iE '(PASSWORD|SECRET|TOKEN|KEY|CREDENTIAL|PRIVATE)' "$f" 2>/dev/null | \
     sed 's/=.*/=***REDACTED***/'
 done
 
-# .env.example にデフォルト値が含まれていないか
+# Check if .env.example contains default values
 grep -E '=.{8,}' .env.example .env.sample 2>/dev/null | \
   grep -v -E '(your-|example|placeholder|changeme|xxx)'
 ```
 
-## Pre-commit Hooks（コミット前検出）
+## Pre-commit Hooks
 
 ```bash
-# pre-commit 設定の確認
+# Check pre-commit configuration
 cat .pre-commit-config.yaml 2>/dev/null | \
   grep -A 5 -E '(detect-secrets|gitleaks|trufflehog|git-secrets)'
 
-# husky / lint-staged の設定確認
+# Check husky / lint-staged configuration
 cat .husky/pre-commit 2>/dev/null
 grep -A 5 'lint-staged' package.json 2>/dev/null
 
-# git-secrets の設定確認
+# Check git-secrets configuration
 git config --get-all secrets.patterns 2>/dev/null
 git config --get-all secrets.allowed 2>/dev/null
 ```
 
-### 推奨 pre-commit 設定
+### Recommended pre-commit Configuration
 
 ```yaml
 # .pre-commit-config.yaml
@@ -198,108 +198,108 @@ repos:
         args: ['--baseline', '.secrets.baseline']
 ```
 
-## Secret Rotation（シークレットのローテーション）
+## Secret Rotation
 
-### 漏洩時の対応手順
+### Response Procedure for Leaks
 
-1. **即座に無効化**: 漏洩したシークレットを即座にローテーション
-2. **影響範囲の確認**: `git log -p --all -S 'LEAKED_SECRET'` で漏洩範囲を特定
-3. **Git 履歴からの除去**: `git filter-repo` または BFG Repo-Cleaner を使用
-4. **全環境の更新**: CI/CD、デプロイ先、チームメンバーの環境を更新
+1. **Immediately revoke**: Rotate the leaked secret immediately
+2. **Assess impact scope**: Identify the scope of the leak with `git log -p --all -S 'LEAKED_SECRET'`
+3. **Remove from Git history**: Use `git filter-repo` or BFG Repo-Cleaner
+4. **Update all environments**: Update CI/CD, deployment targets, and team member environments
 
 ```bash
-# 漏洩したシークレットの Git 履歴検索
+# Search Git history for leaked secrets
 git log -p --all -S 'AKIA' 2>/dev/null | head -30
 
-# BFG による除去（実行前にバックアップ必須）
+# Removal with BFG (backup required before execution)
 # bfg --replace-text passwords.txt .
 
-# git filter-repo による除去
+# Removal with git filter-repo
 # git filter-repo --invert-paths --path secrets.txt
 ```
 
 ## Secret Manager Integration
 
 ```bash
-# AWS Secrets Manager の使用確認
+# Check for usage of AWS Secrets Manager
 grep -rn --include='*.{ts,js,py,rb,go}' \
   -E '(SecretsManager|secretsmanager|GetSecretValue)' . 2>/dev/null | \
   grep -v node_modules
 
-# HashiCorp Vault の使用確認
+# Check for usage of HashiCorp Vault
 grep -rn --include='*.{ts,js,py,rb,go,yml,yaml}' \
   -E '(vault\.|hashicorp|VAULT_ADDR|VAULT_TOKEN)' . 2>/dev/null | \
   grep -v node_modules
 
-# 1Password CLI / Connect の使用確認
+# Check for usage of 1Password CLI / Connect
 grep -rn --include='*.{ts,js,py,yml,yaml}' \
   -E '(1password|op://|OP_CONNECT|onepassword)' . 2>/dev/null
 
-# Google Secret Manager の使用確認
+# Check for usage of Google Secret Manager
 grep -rn --include='*.{ts,js,py,go}' \
   -E '(secretmanager|SecretManagerServiceClient|google.*secret)' . 2>/dev/null | \
   grep -v node_modules
 
-# Azure Key Vault の使用確認
+# Check for usage of Azure Key Vault
 grep -rn --include='*.{ts,js,py,go}' \
   -E '(KeyVaultClient|SecretClient|azure.*keyvault)' . 2>/dev/null | \
   grep -v node_modules
 ```
 
-## gitleaks / trufflehog 設定
+## gitleaks / trufflehog Configuration
 
-### gitleaks 設定例
+### gitleaks Configuration Example
 
 ```bash
-# .gitleaks.toml の存在確認
+# Check for existence of .gitleaks.toml
 cat .gitleaks.toml 2>/dev/null
 
-# gitleaks 設定の推奨チェック
+# Recommended gitleaks configuration checks
 grep -E '(allowlist|rules|path)' .gitleaks.toml 2>/dev/null
 ```
 
-### シークレットパターン一覧
+### Secret Pattern Reference
 
-| パターン名 | 正規表現 | 例 |
-|-----------|---------|-----|
+| Pattern Name | Regex | Example |
+|-------------|-------|---------|
 | AWS Access Key | `AKIA[0-9A-Z]{16}` | `AKIAIOSFODNN7EXAMPLE` |
 | GitHub Token | `ghp_[0-9a-zA-Z]{36}` | `ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` |
 | Slack Token | `xox[bpsa]-[0-9]{10,}` | `xoxb-1234567890-abcdef` |
 | OpenAI Key | `sk-[0-9a-zA-Z]{20,}` | `sk-xxxxxxxxxxxxxxxxxxxxxxxx` |
 | Anthropic Key | `sk-ant-[0-9a-zA-Z-]{20,}` | `sk-ant-api03-xxxx` |
 | Stripe Live Key | `sk_live_[0-9a-zA-Z]{20,}` | `sk_live_xxxxxxxxxxxx` |
-| RSA Private Key | `-----BEGIN RSA PRIVATE KEY-----` | PEM 形式 |
+| RSA Private Key | `-----BEGIN RSA PRIVATE KEY-----` | PEM format |
 | Connection String | `(postgres\|mysql)://.*:.*@` | `postgres://user:pass@host` |
 | JWT | `eyJ[A-Za-z0-9_-]{10,}\.eyJ` | `eyJhbGciOiJIUzI1NiJ9.eyJ...` |
 | Google API Key | `AIza[0-9A-Za-z\\-_]{35}` | `AIzaSyxxxxxxxxxxxxxxxxxxxxxxxxx` |
 | SendGrid Key | `SG\.[0-9A-Za-z\-_]{22}\.` | `SG.xxxxxx.yyyyyyy` |
 
-## よくある漏洩パターン
+## Common Leak Patterns
 
-| 深刻度 | パターン | 影響 |
-|--------|----------|------|
-| Critical | AWS Access Key が Git にコミット | AWS アカウント乗っ取り |
-| Critical | 秘密鍵（.pem, id_rsa）がリポジトリに存在 | サーバー不正アクセス |
-| Critical | `.env.production` が Git 追跡されている | 全本番シークレット漏洩 |
-| High | API キーがソースコードにハードコード | サービスの不正利用 |
-| High | DB 接続文字列にパスワードが平文で記載 | データベースへの不正アクセス |
-| High | Docker レイヤーにシークレットが残存 | コンテナからのシークレット抽出 |
-| Medium | .env.example にデフォルトのシークレット値 | 推測可能なクレデンシャル |
-| Medium | ソースマップが本番で公開 | ソースコード漏洩 |
-| Low | テストコードにモックシークレットが不明確 | 本番シークレットとの混同 |
+| Severity | Pattern | Impact |
+|----------|---------|--------|
+| Critical | AWS Access Key committed to Git | AWS account takeover |
+| Critical | Private key (.pem, id_rsa) present in repository | Unauthorized server access |
+| Critical | `.env.production` tracked by Git | Leakage of all production secrets |
+| High | API keys hardcoded in source code | Unauthorized use of services |
+| High | DB connection string with plaintext password | Unauthorized database access |
+| High | Secrets remaining in Docker layers | Secret extraction from containers |
+| Medium | Default secret values in .env.example | Guessable credentials |
+| Medium | Source maps exposed in production | Source code leakage |
+| Low | Unclear mock secrets in test code | Confusion with production secrets |
 
-## シークレットスキャンチェックリスト
+## Secret Scanning Checklist
 
-- [ ] gitleaks または trufflehog が CI/CD で実行されている
-- [ ] pre-commit hook でシークレット検出が有効
-- [ ] `.env` ファイルが `.gitignore` に含まれている
-- [ ] `.env` ファイルが Git 追跡されていない（`git ls-files` で確認）
-- [ ] AWS Access Key がソースコードに含まれていない
-- [ ] API トークン・キーがハードコードされていない
-- [ ] 秘密鍵ファイル（.pem, .key）がリポジトリに含まれていない
-- [ ] DB 接続文字列が環境変数で管理されている
-- [ ] Docker イメージにシークレットが焼き込まれていない
-- [ ] ソースマップが本番環境で無効化されている
-- [ ] Secret Manager（Vault, AWS SM, 1Password 等）が統合されている
-- [ ] シークレットローテーションの手順が文書化されている
-- [ ] `.env.example` にプレースホルダーのみが記載されている
+- [ ] gitleaks or trufflehog is executed in CI/CD
+- [ ] Pre-commit hooks with secret detection are enabled
+- [ ] `.env` files are included in `.gitignore`
+- [ ] `.env` files are not tracked by Git (verified with `git ls-files`)
+- [ ] AWS Access Keys are not present in source code
+- [ ] API tokens and keys are not hardcoded
+- [ ] Private key files (.pem, .key) are not included in the repository
+- [ ] DB connection strings are managed via environment variables
+- [ ] Secrets are not baked into Docker images
+- [ ] Source maps are disabled in the production environment
+- [ ] A Secret Manager (Vault, AWS SM, 1Password, etc.) is integrated
+- [ ] Secret rotation procedures are documented
+- [ ] `.env.example` contains only placeholders

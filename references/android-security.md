@@ -1,152 +1,152 @@
 # Android Security Testing Reference
 
-OWASP MASVS v2 / MASTG に基づく Kotlin/Java 向け詳細検査ガイド。
+Detailed inspection guide for Kotlin/Java based on OWASP MASVS v2 / MASTG.
 
-## MASVS-STORAGE: データ保存
+## MASVS-STORAGE: Data Storage
 
-### 検査対象
+### Inspection Targets
 
-- **SharedPreferences**: 機密データ（トークン、パスワード、個人情報）の平文保存禁止
-- **EncryptedSharedPreferences**: 暗号化された SharedPreferences の使用推奨
-- **SQLite**: 暗号化の有無（SQLCipher の使用）、WAL ファイルの保護
-- **Internal Storage**: `MODE_WORLD_READABLE` / `MODE_WORLD_WRITABLE` の使用禁止
-- **External Storage**: SD カード等の外部ストレージへの機密データ書き込み禁止
-- **ログ出力**: `Log.d` / `Log.v` / `Log.i` での機密データ出力
-- **クリップボード**: `ClipboardManager` への機密データコピー
-- **バックアップ**: `android:allowBackup="true"` によるデータ漏洩リスク
+- **SharedPreferences**: Prohibition of storing sensitive data (tokens, passwords, personal information) in plaintext
+- **EncryptedSharedPreferences**: Recommended use of encrypted SharedPreferences
+- **SQLite**: Presence of encryption (use of SQLCipher), protection of WAL files
+- **Internal Storage**: Prohibition of using `MODE_WORLD_READABLE` / `MODE_WORLD_WRITABLE`
+- **External Storage**: Prohibition of writing sensitive data to external storage such as SD cards
+- **Log Output**: Sensitive data output via `Log.d` / `Log.v` / `Log.i`
+- **Clipboard**: Copying sensitive data to `ClipboardManager`
+- **Backup**: Data leakage risk from `android:allowBackup="true"`
 
 ```bash
-# SharedPreferences への機密データ保存
+# Sensitive data storage in SharedPreferences
 grep -rn --include='*.kt' --include='*.java' \
   -E '(getSharedPreferences|PreferenceManager\.getDefaultSharedPreferences)' . | \
   grep -iE '(password|token|secret|key|credential|session|auth|pin)'
 
-# EncryptedSharedPreferences の使用確認（推奨パターン）
+# Verify use of EncryptedSharedPreferences (recommended pattern)
 grep -rn --include='*.kt' --include='*.java' \
   -E 'EncryptedSharedPreferences' .
 
-# SharedPreferences の MODE 確認（WORLD_READABLE / WORLD_WRITABLE は危険）
+# Check SharedPreferences MODE (WORLD_READABLE / WORLD_WRITABLE is dangerous)
 grep -rn --include='*.kt' --include='*.java' \
   -E 'MODE_WORLD_(READABLE|WRITABLE)' .
 
-# 外部ストレージへの書き込み
+# Writing to external storage
 grep -rn --include='*.kt' --include='*.java' \
   -E '(getExternalStorageDirectory|getExternalFilesDir|Environment\.DIRECTORY_)' .
 
-# ログ出力の機密データ
+# Sensitive data in log output
 grep -rn --include='*.kt' --include='*.java' \
   -E 'Log\.(d|v|i|w|e|wtf)\(' . | \
   grep -iE '(password|token|secret|key|credential|bearer|session)'
 
-# SQLite の平文データベース
+# Plaintext SQLite database
 grep -rn --include='*.kt' --include='*.java' \
   -E '(SQLiteDatabase\.openOrCreateDatabase|openOrCreateDatabase|SQLiteOpenHelper)' .
 
-# クリップボードへのコピー
+# Copying to clipboard
 grep -rn --include='*.kt' --include='*.java' \
   -E '(ClipboardManager|setPrimaryClip|ClipData\.newPlainText)' .
 
-# android:allowBackup 設定
+# android:allowBackup setting
 grep -rn --include='AndroidManifest.xml' \
   -E 'android:allowBackup\s*=\s*"true"' .
 ```
 
-## MASVS-CRYPTO: 暗号
+## MASVS-CRYPTO: Cryptography
 
-### 検査対象
+### Inspection Targets
 
-- **弱いアルゴリズム**: MD5, SHA1（署名用途）, DES, 3DES, RC4, ECB モード
-- **Android KeyStore**: 適切な鍵保管とアクセス制御
-- **ハードコードされた鍵**: ソースコード内の暗号鍵・IV
-- **乱数生成**: `java.util.Random` の暗号用途使用（`SecureRandom` を推奨）
-- **鍵導出関数**: PBKDF2, Argon2 の適切な使用
+- **Weak Algorithms**: MD5, SHA1 (for signature purposes), DES, 3DES, RC4, ECB mode
+- **Android KeyStore**: Proper key storage and access control
+- **Hardcoded Keys**: Cryptographic keys and IVs in source code
+- **Random Number Generation**: Use of `java.util.Random` for cryptographic purposes (`SecureRandom` recommended)
+- **Key Derivation Functions**: Proper use of PBKDF2, Argon2
 
 ```bash
-# 弱い暗号アルゴリズム
+# Weak cryptographic algorithms
 grep -rn --include='*.kt' --include='*.java' \
   -iE '(getInstance\s*\(\s*"(DES|DESede|RC4|RC2|Blowfish|MD5|SHA-1)"|AES/ECB|DES/ECB)' .
 
-# ECB モードの使用（パターン漏洩リスク）
+# Use of ECB mode (pattern leakage risk)
 grep -rn --include='*.kt' --include='*.java' \
   -E 'Cipher\.getInstance\s*\(\s*"[^"]*ECB' .
 
-# ハードコードされた暗号鍵
+# Hardcoded cryptographic keys
 grep -rn --include='*.kt' --include='*.java' \
   -E '(val|var|final|static)\s+(key|secret|iv|nonce|aesKey|secretKey)\s*[:=]\s*"[^"]{8,}"' .
 
-# java.util.Random の暗号用途使用（SecureRandom を推奨）
+# Use of java.util.Random for cryptographic purposes (SecureRandom recommended)
 grep -rn --include='*.kt' --include='*.java' \
   -E 'java\.util\.Random|new\s+Random\(' .
 
-# Android KeyStore の使用確認
+# Verify use of Android KeyStore
 grep -rn --include='*.kt' --include='*.java' \
   -E '(KeyStore\.getInstance\s*\(\s*"AndroidKeyStore"|KeyGenParameterSpec|setUserAuthenticationRequired)' .
 
-# 弱いハッシュアルゴリズム
+# Weak hash algorithms
 grep -rn --include='*.kt' --include='*.java' \
   -E 'MessageDigest\.getInstance\s*\(\s*"(MD5|SHA-1)"\)' .
 ```
 
-## MASVS-AUTH: 認証
+## MASVS-AUTH: Authentication
 
-### 検査対象
+### Inspection Targets
 
-- **BiometricPrompt**: 適切な生体認証の実装と CryptoObject の使用
-- **ローカル認証**: 生体認証のフォールバック（デバイスクレデンシャル）の安全性
-- **トークン管理**: アクセストークン・リフレッシュトークンの KeyStore 保存
-- **セッション制御**: タイムアウト、バックグラウンド時の再認証
-- **CryptoObject**: 生体認証と暗号操作の紐付け（認証バイパス防止）
+- **BiometricPrompt**: Proper biometric authentication implementation and use of CryptoObject
+- **Local Authentication**: Safety of biometric fallback (device credentials)
+- **Token Management**: Storing access tokens and refresh tokens in KeyStore
+- **Session Control**: Timeout, re-authentication when in background
+- **CryptoObject**: Binding biometric authentication to cryptographic operations (preventing authentication bypass)
 
 ```bash
-# BiometricPrompt 実装
+# BiometricPrompt implementation
 grep -rn --include='*.kt' --include='*.java' \
   -E '(BiometricPrompt|BiometricManager|canAuthenticate|authenticate\s*\()' .
 
-# CryptoObject の使用確認（未使用は認証バイパスリスク）
+# Verify use of CryptoObject (not using it poses authentication bypass risk)
 grep -rn --include='*.kt' --include='*.java' \
   -E '(CryptoObject|BiometricPrompt\.CryptoObject)' .
 
-# 生体認証のフォールバック設定
+# Biometric fallback settings
 grep -rn --include='*.kt' --include='*.java' \
   -E '(setAllowedAuthenticators|BIOMETRIC_STRONG|BIOMETRIC_WEAK|DEVICE_CREDENTIAL)' .
 
-# FingerprintManager（非推奨 API の検出）
+# FingerprintManager (detection of deprecated API)
 grep -rn --include='*.kt' --include='*.java' \
   -E '(FingerprintManager|FingerprintManagerCompat)' .
 
-# トークンの保存箇所
+# Token storage locations
 grep -rn --include='*.kt' --include='*.java' \
   -iE '(access_token|refresh_token|auth_token|bearer)' . | \
   grep -iE '(put|save|store|write|edit\(\))'
 ```
 
-## MASVS-NETWORK: ネットワーク
+## MASVS-NETWORK: Network
 
-### 検査対象
+### Inspection Targets
 
-- **Network Security Config**: `network_security_config.xml` の設定
-- **Cleartext 通信**: `cleartextTrafficPermitted` の有効化
-- **Certificate Pinning**: ピン留めの実装（OkHttp CertificatePinner, Network Security Config）
-- **カスタム TrustManager**: `X509TrustManager` の全証明書受け入れ
-- **HostnameVerifier**: ホスト名検証の無効化
+- **Network Security Config**: Settings in `network_security_config.xml`
+- **Cleartext Communication**: Enabling `cleartextTrafficPermitted`
+- **Certificate Pinning**: Pinning implementation (OkHttp CertificatePinner, Network Security Config)
+- **Custom TrustManager**: `X509TrustManager` accepting all certificates
+- **HostnameVerifier**: Disabling hostname verification
 
 ```bash
-# Network Security Config の確認
+# Check Network Security Config
 find . -name 'network_security_config.xml' \
   -exec cat {} \;
 
-# Cleartext 通信の許可
+# Allowing cleartext communication
 grep -rn --include='AndroidManifest.xml' \
   -E '(usesCleartextTraffic\s*=\s*"true"|cleartextTrafficPermitted\s*=\s*"true")' .
 
 grep -rn --include='network_security_config.xml' \
   -E 'cleartextTrafficPermitted\s*=\s*"true"' .
 
-# カスタム TrustManager（全証明書受け入れ = 危険）
+# Custom TrustManager (accepting all certificates = dangerous)
 grep -rn --include='*.kt' --include='*.java' \
   -E '(X509TrustManager|TrustManager|checkServerTrusted|getAcceptedIssuers)' .
 
-# HostnameVerifier の無効化（全ホスト名許可 = 危険）
+# Disabling HostnameVerifier (allowing all hostnames = dangerous)
 grep -rn --include='*.kt' --include='*.java' \
   -E '(ALLOW_ALL_HOSTNAME_VERIFIER|HostnameVerifier\s*\{|verify.*return\s+true)' .
 
@@ -154,195 +154,195 @@ grep -rn --include='*.kt' --include='*.java' \
 grep -rn --include='*.kt' --include='*.java' \
   -E '(CertificatePinner|certificatePinner|\.pin\s*\()' .
 
-# HTTP URL の使用（cleartext）
+# Use of HTTP URLs (cleartext)
 grep -rn --include='*.kt' --include='*.java' \
   -E '"http://[^l][^o][^c][^a][^l]' . | grep -v '// '
 
-# Network Security Config の参照
+# Network Security Config reference
 grep -rn --include='AndroidManifest.xml' \
   -E 'networkSecurityConfig' .
 ```
 
-## MASVS-PLATFORM: プラットフォーム連携
+## MASVS-PLATFORM: Platform Interaction
 
-### 検査対象
+### Inspection Targets
 
-- **Intent フィルター**: 暗黙的 Intent の受信、入力検証
-- **Deep Links / App Links**: URL パラメータの検証不足
+- **Intent Filters**: Receiving implicit Intents, input validation
+- **Deep Links / App Links**: Insufficient validation of URL parameters
 - **WebView**: `setJavaScriptEnabled`, `addJavascriptInterface`, `setAllowFileAccess`
-- **Content Provider**: `exported="true"` のプロバイダーと権限制御
-- **Broadcast Receiver**: `exported="true"` のレシーバーとパーミッション
-- **PendingIntent**: `FLAG_IMMUTABLE` / `FLAG_MUTABLE` の適切な使用
-- **Activity / Service のエクスポート**: 不要なコンポーネントの公開
+- **Content Provider**: Providers with `exported="true"` and permission control
+- **Broadcast Receiver**: Receivers with `exported="true"` and permissions
+- **PendingIntent**: Proper use of `FLAG_IMMUTABLE` / `FLAG_MUTABLE`
+- **Activity / Service Export**: Exposing unnecessary components
 
 ```bash
-# exported コンポーネントの確認
+# Check exported components
 grep -rn --include='AndroidManifest.xml' \
   -E 'android:exported\s*=\s*"true"' .
 
-# Intent フィルター付きコンポーネント
+# Components with Intent filters
 grep -rn --include='AndroidManifest.xml' -A 5 \
   '<intent-filter>' .
 
-# Deep Links の定義
+# Deep Link definitions
 grep -rn --include='AndroidManifest.xml' \
   -E '(android:scheme|android:host|android:pathPrefix)' .
 
-# Intent データの未検証使用
+# Unvalidated use of Intent data
 grep -rn --include='*.kt' --include='*.java' \
   -E '(getIntent\(\)|intent\.(getStringExtra|getData|getAction|getExtras))' .
 
-# WebView の危険な設定
+# Dangerous WebView settings
 grep -rn --include='*.kt' --include='*.java' \
   -E '(setJavaScriptEnabled\s*\(\s*true|addJavascriptInterface|setAllowFileAccess\s*\(\s*true|setAllowFileAccessFromFileURLs|setAllowUniversalAccessFromFileURLs)' .
 
-# Content Provider のエクスポート
+# Content Provider export
 grep -rn --include='AndroidManifest.xml' -B 2 -A 5 \
   '<provider' . | grep -E '(exported|authorities|permission|readPermission|writePermission)'
 
-# PendingIntent のフラグ確認（FLAG_MUTABLE は危険な場合あり）
+# PendingIntent flag check (FLAG_MUTABLE can be dangerous)
 grep -rn --include='*.kt' --include='*.java' \
   -E '(PendingIntent\.(getActivity|getBroadcast|getService|getForegroundService)|FLAG_MUTABLE|FLAG_IMMUTABLE)' .
 
-# Broadcast Receiver のパーミッション
+# Broadcast Receiver permissions
 grep -rn --include='*.kt' --include='*.java' \
   -E '(registerReceiver|sendBroadcast|sendOrderedBroadcast)' .
 ```
 
-## MASVS-CODE: コード品質
+## MASVS-CODE: Code Quality
 
-### 検査対象
+### Inspection Targets
 
-- **ProGuard/R8**: 難読化設定の確認（`minifyEnabled`、`proguard-rules.pro`）
-- **デバッグフラグ**: `android:debuggable="true"` の本番残存
-- **StrictMode**: 本番ビルドでの有効化
-- **依存ライブラリ**: 既知の脆弱性を含むライブラリ
-- **入力検証**: 外部入力（Intent, Deep Link, Content Provider）のサニタイズ
-- **WebView のリモートデバッグ**: `setWebContentsDebuggingEnabled(true)` の残存
+- **ProGuard/R8**: Verify obfuscation settings (`minifyEnabled`, `proguard-rules.pro`)
+- **Debug Flag**: `android:debuggable="true"` remaining in production
+- **StrictMode**: Enabled in production builds
+- **Dependency Libraries**: Libraries containing known vulnerabilities
+- **Input Validation**: Sanitization of external inputs (Intent, Deep Link, Content Provider)
+- **WebView Remote Debugging**: `setWebContentsDebuggingEnabled(true)` remaining in code
 
 ```bash
-# ProGuard/R8 設定
+# ProGuard/R8 settings
 grep -rn --include='build.gradle' --include='build.gradle.kts' \
   -E '(minifyEnabled|isMinifyEnabled|proguardFiles|shrinkResources)' .
 
-# デバッグフラグの残存
+# Remaining debug flags
 grep -rn --include='AndroidManifest.xml' \
   -E 'android:debuggable\s*=\s*"true"' .
 
-# StrictMode の本番残存
+# StrictMode remaining in production
 grep -rn --include='*.kt' --include='*.java' \
   -E '(StrictMode\.setThreadPolicy|StrictMode\.setVmPolicy|StrictMode\.ThreadPolicy)' .
 
-# WebView リモートデバッグの有効化
+# WebView remote debugging enabled
 grep -rn --include='*.kt' --include='*.java' \
   -E 'setWebContentsDebuggingEnabled\s*\(\s*true' .
 
-# デバッグログの残存
+# Remaining debug logs
 grep -rn --include='*.kt' --include='*.java' \
   -E '(BuildConfig\.DEBUG|isDebuggable|debuggable)' . | \
   grep -v 'if.*BuildConfig\.DEBUG'
 
-# Gradle 依存の脆弱性確認
+# Check Gradle dependencies for vulnerabilities
 find . -name 'build.gradle' -o -name 'build.gradle.kts' | \
   head -5 | xargs grep -E 'implementation|api|compileOnly' 2>/dev/null
 ```
 
-## MASVS-RESILIENCE: 耐タンパー性
+## MASVS-RESILIENCE: Tamper Resistance
 
-### 検査対象
+### Inspection Targets
 
-- **Root 検出**: RootBeer 等のライブラリ、手動検出ロジック
-- **タンパー検出**: APK 署名の検証、Installer パッケージの確認
-- **エミュレータ検出**: Build プロパティ、センサー有無のチェック
-- **デバッガ検出**: `isDebuggerConnected()`, TracerPid の確認
-- **Frida 検出**: Frida サーバーのポート・プロセスの検出
-- **リバースエンジニアリング対策**: 文字列の難読化、リフレクション対策
+- **Root Detection**: Libraries such as RootBeer, manual detection logic
+- **Tamper Detection**: APK signature verification, installer package verification
+- **Emulator Detection**: Build property checks, sensor availability checks
+- **Debugger Detection**: `isDebuggerConnected()`, TracerPid verification
+- **Frida Detection**: Detection of Frida server ports and processes
+- **Reverse Engineering Countermeasures**: String obfuscation, reflection countermeasures
 
 ```bash
-# Root 検出の実装
+# Root detection implementation
 grep -rn --include='*.kt' --include='*.java' \
   -iE '(isRooted|rootBeer|RootTools|checkForSuBinary|/system/app/Superuser|/system/xbin/su|com\.topjohnwu\.magisk)' .
 
-# エミュレータ検出
+# Emulator detection
 grep -rn --include='*.kt' --include='*.java' \
   -iE '(isEmulator|Build\.(FINGERPRINT|MODEL|MANUFACTURER|BRAND|DEVICE|PRODUCT).*generic|goldfish|ranchu|sdk_gphone|google_sdk)' .
 
-# デバッガ検出
+# Debugger detection
 grep -rn --include='*.kt' --include='*.java' \
   -E '(Debug\.isDebuggerConnected|waitForDebugger|TracerPid|android\.os\.Debug)' .
 
-# Frida 検出
+# Frida detection
 grep -rn --include='*.kt' --include='*.java' \
   -iE '(frida|27042|fridaserver|libfrida|xposed|de\.robv\.android\.xposed)' .
 
-# APK 署名検証
+# APK signature verification
 grep -rn --include='*.kt' --include='*.java' \
   -E '(PackageManager\.GET_SIGNATURES|GET_SIGNING_CERTIFICATES|PackageInfo.*signatures|getPackageInfo)' .
 
-# Installer パッケージの確認（サイドロード検出）
+# Installer package verification (sideloading detection)
 grep -rn --include='*.kt' --include='*.java' \
   -E '(getInstallerPackageName|getInstallSourceInfo|com\.android\.vending)' .
 ```
 
-## MASVS-PRIVACY: プライバシー
+## MASVS-PRIVACY: Privacy
 
-### 検査対象
+### Inspection Targets
 
-- **Android パーミッション**: 不要な危険パーミッション（`DANGEROUS` レベル）の要求
-- **位置情報**: 前景/背景の位置情報アクセス、精度の最小化
-- **広告 ID**: Google Advertising ID の使用と代替
-- **データ収集**: 分析 SDK、トラッカーの使用状況
-- **プライバシーインジケータ**: カメラ・マイク使用時のインジケータ対応
+- **Android Permissions**: Requesting unnecessary dangerous permissions (`DANGEROUS` level)
+- **Location Information**: Foreground/background location access, minimizing accuracy
+- **Advertising ID**: Use of Google Advertising ID and alternatives
+- **Data Collection**: Usage of analytics SDKs and trackers
+- **Privacy Indicators**: Indicator support when camera or microphone is in use
 
 ```bash
-# 危険パーミッションの要求
+# Requesting dangerous permissions
 grep -rn --include='AndroidManifest.xml' \
   -E '(READ_CONTACTS|READ_CALL_LOG|READ_SMS|RECORD_AUDIO|CAMERA|ACCESS_FINE_LOCATION|ACCESS_BACKGROUND_LOCATION|READ_EXTERNAL_STORAGE|READ_MEDIA_IMAGES|READ_PHONE_STATE|BODY_SENSORS)' .
 
-# 位置情報の使用
+# Use of location information
 grep -rn --include='*.kt' --include='*.java' \
   -E '(LocationManager|FusedLocationProviderClient|requestLocationUpdates|getLastKnownLocation|ACCESS_FINE_LOCATION|ACCESS_COARSE_LOCATION)' .
 
-# 背景位置情報アクセス
+# Background location access
 grep -rn --include='AndroidManifest.xml' \
   -E 'ACCESS_BACKGROUND_LOCATION' .
 
-# 広告 ID の使用
+# Use of advertising ID
 grep -rn --include='*.kt' --include='*.java' \
   -E '(AdvertisingIdClient|getAdvertisingIdInfo|advertisingId)' .
 
-# 分析 SDK の検出
+# Detection of analytics SDKs
 grep -rn --include='build.gradle' --include='build.gradle.kts' \
   -iE '(firebase-analytics|com\.google\.firebase|com\.facebook\.android|com\.adjust\.sdk|io\.branch|com\.appsflyer)' .
 
-# カメラ・マイクの使用
+# Use of camera and microphone
 grep -rn --include='*.kt' --include='*.java' \
   -E '(CameraManager|Camera\.open|MediaRecorder|AudioRecord)' .
 ```
 
-## Android 検査チェックリスト
+## Android Inspection Checklist
 
-- [ ] SharedPreferences に機密データが平文で保存されていない（EncryptedSharedPreferences を使用）
-- [ ] 外部ストレージに機密データが書き込まれていない
-- [ ] `android:allowBackup="false"` が設定されている
-- [ ] ログに機密データが出力されていない（Release ビルドでログ無効化）
-- [ ] Network Security Config が適切に設定されている
-- [ ] `cleartextTrafficPermitted` が false に設定されている
-- [ ] Certificate Pinning が実装されている
-- [ ] カスタム TrustManager が全証明書を受け入れていない
-- [ ] HostnameVerifier が正しくホスト名を検証している
-- [ ] 不要なコンポーネントが `exported="false"` に設定されている
-- [ ] Intent データが検証・サニタイズされている
-- [ ] WebView で `addJavascriptInterface` が最小限に使用されている
-- [ ] WebView のリモートデバッグが本番で無効化されている
-- [ ] Content Provider に適切なパーミッションが設定されている
-- [ ] PendingIntent に `FLAG_IMMUTABLE` が使用されている
-- [ ] BiometricPrompt で CryptoObject が使用されている
-- [ ] 弱い暗号アルゴリズム（MD5, SHA1, DES, ECB モード）が使用されていない
-- [ ] 暗号鍵がハードコードされていない（Android KeyStore を使用）
-- [ ] `SecureRandom` が暗号用途に使用されている
-- [ ] ProGuard/R8 による難読化が有効化されている
-- [ ] `android:debuggable="false"` が設定されている
-- [ ] Root 検出が実装されている（高セキュリティアプリの場合）
-- [ ] 不要な危険パーミッションが要求されていない
-- [ ] 背景位置情報アクセスが最小限に抑えられている
+- [ ] Sensitive data is not stored in plaintext in SharedPreferences (use EncryptedSharedPreferences)
+- [ ] Sensitive data is not written to external storage
+- [ ] `android:allowBackup="false"` is configured
+- [ ] Sensitive data is not output in logs (logging disabled in Release builds)
+- [ ] Network Security Config is properly configured
+- [ ] `cleartextTrafficPermitted` is set to false
+- [ ] Certificate Pinning is implemented
+- [ ] Custom TrustManager does not accept all certificates
+- [ ] HostnameVerifier correctly verifies hostnames
+- [ ] Unnecessary components are set to `exported="false"`
+- [ ] Intent data is validated and sanitized
+- [ ] `addJavascriptInterface` is used minimally in WebView
+- [ ] WebView remote debugging is disabled in production
+- [ ] Content Provider has appropriate permissions configured
+- [ ] `FLAG_IMMUTABLE` is used for PendingIntent
+- [ ] CryptoObject is used with BiometricPrompt
+- [ ] Weak cryptographic algorithms (MD5, SHA1, DES, ECB mode) are not used
+- [ ] Cryptographic keys are not hardcoded (use Android KeyStore)
+- [ ] `SecureRandom` is used for cryptographic purposes
+- [ ] Obfuscation via ProGuard/R8 is enabled
+- [ ] `android:debuggable="false"` is configured
+- [ ] Root detection is implemented (for high-security apps)
+- [ ] Unnecessary dangerous permissions are not requested
+- [ ] Background location access is minimized

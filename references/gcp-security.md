@@ -1,253 +1,253 @@
 # GCP Security Testing Reference
 
-GCP Security Best Practices に基づくセキュリティ検査ガイド。
-gcloud CLI コマンドによる自動検査と CIS GCP Foundations Benchmark への準拠を確認する。
+Security inspection guide based on GCP Security Best Practices.
+Verify compliance with the CIS GCP Foundations Benchmark through automated inspection using gcloud CLI commands.
 
-## IAM の検査
+## IAM Inspection
 
-### サービスアカウント
+### Service Accounts
 
 ```bash
-# プロジェクト内のサービスアカウント一覧
+# List service accounts in the project
 gcloud iam service-accounts list --format='table(email, displayName, disabled)'
 
-# ユーザー管理のサービスアカウントキー（CIS 1.4）
+# User-managed service account keys (CIS 1.4)
 for sa in $(gcloud iam service-accounts list --format='value(email)'); do
   keys=$(gcloud iam service-accounts keys list --iam-account "$sa" \
     --managed-by user --format='value(name)')
   [ -n "$keys" ] && echo "USER MANAGED KEY: $sa"
 done
 
-# 90 日以上ローテーションされていないキー
+# Keys not rotated for 90+ days
 for sa in $(gcloud iam service-accounts list --format='value(email)'); do
   gcloud iam service-accounts keys list --iam-account "$sa" \
     --managed-by user --format='table(name, validAfterTime, validBeforeTime)' 2>/dev/null
 done
 
-# デフォルトサービスアカウントの使用確認（CIS 1.5）
+# Verify use of default service accounts (CIS 1.5)
 gcloud iam service-accounts list --format='value(email)' | grep -E 'compute@developer|appspot'
 ```
 
-### IAM ポリシー・ロール
+### IAM Policies and Roles
 
 ```bash
-# プロジェクトレベルの IAM バインディング確認
+# Verify project-level IAM bindings
 gcloud projects get-iam-policy $(gcloud config get-value project) \
   --format='table(bindings.role, bindings.members)'
 
-# 過度に広い権限（Editor/Owner ロール - CIS 1.6）
+# Overly broad permissions (Editor/Owner roles - CIS 1.6)
 gcloud projects get-iam-policy $(gcloud config get-value project) \
   --flatten='bindings[].members' \
   --filter='bindings.role:(roles/editor OR roles/owner)' \
   --format='table(bindings.role, bindings.members)'
 
-# allUsers / allAuthenticatedUsers バインディング（CIS 1.12）
+# allUsers / allAuthenticatedUsers bindings (CIS 1.12)
 gcloud projects get-iam-policy $(gcloud config get-value project) \
   --flatten='bindings[].members' \
   --filter='bindings.members:(allUsers OR allAuthenticatedUsers)' \
   --format='table(bindings.role, bindings.members)'
 
-# カスタムロールの確認
+# Verify custom roles
 gcloud iam roles list --project=$(gcloud config get-value project) \
   --format='table(name, title, stage)'
 
-# Workload Identity の確認
+# Verify Workload Identity
 gcloud iam service-accounts get-iam-policy <SERVICE_ACCOUNT_EMAIL> \
   --format='table(bindings.role, bindings.members)' 2>/dev/null
 ```
 
-### 組織ポリシー
+### Organization Policies
 
 ```bash
-# 組織ポリシーの一覧
+# List organization policies
 gcloud resource-manager org-policies list --project=$(gcloud config get-value project) \
   --format='table(constraint, listPolicy, booleanPolicy)' 2>/dev/null
 
-# ドメイン制限ポリシーの確認（CIS 1.1）
+# Verify domain restriction policy (CIS 1.1)
 gcloud resource-manager org-policies describe iam.allowedPolicyMemberDomains \
   --project=$(gcloud config get-value project) 2>/dev/null
 ```
 
-## GCS の検査
+## GCS Inspection
 
-### バケットアクセス
+### Bucket Access
 
 ```bash
-# 全バケット一覧
+# List all buckets
 gsutil ls -p $(gcloud config get-value project)
 
-# バケットの IAM ポリシー確認
+# Verify bucket IAM policies
 for bucket in $(gsutil ls -p $(gcloud config get-value project)); do
   echo "=== $bucket ==="
   gsutil iam get "$bucket" 2>/dev/null | grep -E '(allUsers|allAuthenticatedUsers)'
 done
 
-# パブリックバケットの検出（CIS 5.1）
+# Detect public buckets (CIS 5.1)
 for bucket in $(gsutil ls -p $(gcloud config get-value project)); do
   gsutil iam get "$bucket" 2>/dev/null | grep -q 'allUsers' && echo "PUBLIC: $bucket"
 done
 
-# 均一バケットレベルアクセスの確認（CIS 5.2）
+# Verify uniform bucket-level access (CIS 5.2)
 for bucket in $(gsutil ls -p $(gcloud config get-value project)); do
   gsutil uniformbucketlevelaccess get "$bucket" 2>/dev/null
 done
 ```
 
-### バケット暗号化・ロギング
+### Bucket Encryption and Logging
 
 ```bash
-# バケット暗号化設定（CMEK の確認）
+# Bucket encryption settings (CMEK verification)
 for bucket in $(gsutil ls -p $(gcloud config get-value project)); do
   gsutil kms get "$bucket" 2>/dev/null || echo "DEFAULT ENCRYPTION: $bucket"
 done
 
-# バケットのアクセスログ
+# Bucket access logs
 for bucket in $(gsutil ls -p $(gcloud config get-value project)); do
   gsutil logging get "$bucket" 2>/dev/null
 done
 
-# バケットのバージョニング
+# Bucket versioning
 for bucket in $(gsutil ls -p $(gcloud config get-value project)); do
   gsutil versioning get "$bucket" 2>/dev/null
 done
 
-# バケットの保持ポリシー
+# Bucket retention policy
 for bucket in $(gsutil ls -p $(gcloud config get-value project)); do
   gsutil retention get "$bucket" 2>/dev/null
 done
 ```
 
-## VPC の検査
+## VPC Inspection
 
-### ファイアウォールルール
+### Firewall Rules
 
 ```bash
-# 全ファイアウォールルール一覧
+# List all firewall rules
 gcloud compute firewall-rules list \
   --format='table(name, network, direction, priority, allowed, sourceRanges, targetTags)'
 
-# 0.0.0.0/0 からの ingress 許可ルール（CIS 3.6/3.7）
+# Ingress allow rules from 0.0.0.0/0 (CIS 3.6/3.7)
 gcloud compute firewall-rules list \
   --filter='sourceRanges=0.0.0.0/0 AND direction=INGRESS' \
   --format='table(name, allowed, targetTags, priority)'
 
-# SSH（22）が全公開のルール（CIS 3.6）
+# Rules with SSH (22) open to all (CIS 3.6)
 gcloud compute firewall-rules list \
   --filter='sourceRanges=0.0.0.0/0 AND direction=INGRESS AND allowed[].ports=22' \
   --format='table(name, network, targetTags)'
 
-# RDP（3389）が全公開のルール（CIS 3.7）
+# Rules with RDP (3389) open to all (CIS 3.7)
 gcloud compute firewall-rules list \
   --filter='sourceRanges=0.0.0.0/0 AND direction=INGRESS AND allowed[].ports=3389' \
   --format='table(name, network, targetTags)'
 
-# デフォルトネットワークの存在確認（CIS 3.1 - 削除推奨）
+# Verify existence of default network (CIS 3.1 - deletion recommended)
 gcloud compute networks list --filter='name=default' --format='table(name, autoCreateSubnetworks)'
 ```
 
-### VPC Service Controls・Private Access
+### VPC Service Controls and Private Access
 
 ```bash
-# Private Google Access の確認（CIS 3.8）
+# Verify Private Google Access (CIS 3.8)
 gcloud compute networks subnets list \
   --format='table(name, region, privateIpGoogleAccess)'
 
-# VPC Service Controls のペリメータ確認
+# Verify VPC Service Controls perimeters
 gcloud access-context-manager perimeters list --format='table(name, title, status)' 2>/dev/null
 ```
 
-## Compute の検査
+## Compute Inspection
 
 ```bash
-# OS Login の有効化確認（CIS 4.4）
+# Verify OS Login is enabled (CIS 4.4)
 gcloud compute project-info describe \
   --format='value(commonInstanceMetadata.items[key=enable-oslogin].value)'
 
-# シリアルポートの無効化確認（CIS 4.5）
+# Verify serial port is disabled (CIS 4.5)
 gcloud compute instances list \
   --format='table(name, zone, metadata.items[key=serial-port-enable].value)'
 
-# サービスアカウントスコープの確認（CIS 4.2）
+# Verify service account scopes (CIS 4.2)
 gcloud compute instances list \
   --format='table(name, serviceAccounts[].email, serviceAccounts[].scopes)'
 
-# デフォルトサービスアカウントを使用するインスタンス
+# Instances using default service account
 gcloud compute instances list \
   --format='value(name, serviceAccounts[].email)' | grep 'compute@developer'
 
-# Shielded VM の確認（CIS 4.8）
+# Verify Shielded VM (CIS 4.8)
 gcloud compute instances list \
   --format='table(name, shieldedInstanceConfig.enableSecureBoot, shieldedInstanceConfig.enableVtpm, shieldedInstanceConfig.enableIntegrityMonitoring)'
 
-# パブリック IP を持つインスタンス
+# Instances with public IPs
 gcloud compute instances list \
   --format='table(name, zone, networkInterfaces[].accessConfigs[].natIP)' | grep -v 'None'
 
-# ディスクの暗号化確認
+# Verify disk encryption
 gcloud compute disks list \
   --format='table(name, zone, diskEncryptionKey)'
 ```
 
-## Cloud SQL の検査
+## Cloud SQL Inspection
 
 ```bash
-# Cloud SQL インスタンス一覧
+# List Cloud SQL instances
 gcloud sql instances list --format='table(name, databaseVersion, settings.tier, settings.ipConfiguration.ipv4Enabled)'
 
-# パブリック IP が有効な Cloud SQL（CIS 6.5）
+# Cloud SQL with public IP enabled (CIS 6.5)
 gcloud sql instances list \
   --filter='settings.ipConfiguration.ipv4Enabled=true' \
   --format='table(name, databaseVersion)'
 
-# SSL 未強制の Cloud SQL（CIS 6.4）
+# Cloud SQL without SSL enforced (CIS 6.4)
 gcloud sql instances list --format='json' | \
   jq '.[] | select(.settings.ipConfiguration.requireSsl != true) | .name'
 
-# 承認済みネットワークの確認（0.0.0.0/0 の検出）
+# Verify authorized networks (detect 0.0.0.0/0)
 for instance in $(gcloud sql instances list --format='value(name)'); do
   gcloud sql instances describe "$instance" \
     --format='value(settings.ipConfiguration.authorizedNetworks[].value)' | \
     grep '0\.0\.0\.0' && echo "OPEN NETWORK: $instance"
 done
 
-# 自動バックアップの確認（CIS 6.7）
+# Verify automated backups (CIS 6.7)
 gcloud sql instances list \
   --format='table(name, settings.backupConfiguration.enabled, settings.backupConfiguration.pointInTimeRecoveryEnabled)'
 ```
 
-## Cloud Functions の検査
+## Cloud Functions Inspection
 
 ```bash
-# Cloud Functions 一覧
+# List Cloud Functions
 gcloud functions list --format='table(name, runtime, serviceAccountEmail, ingressSettings)'
 
-# 全公開の Cloud Functions（ingress が all-traffic）
+# Cloud Functions open to all (ingress is all-traffic)
 gcloud functions list \
   --filter='ingressSettings=ALLOW_ALL' \
   --format='table(name, ingressSettings)'
 
-# サービスアカウントの確認
+# Verify service accounts
 gcloud functions list \
   --format='table(name, serviceAccountEmail)' | grep 'appspot.gserviceaccount.com'
 
-# VPC コネクタ未設定の関数
+# Functions without VPC connector
 gcloud functions list \
   --format='table(name, vpcConnector)' | grep -E '\s*$'
 
-# 環境変数内のシークレット
+# Secrets in environment variables
 for fn in $(gcloud functions list --format='value(name)'); do
   gcloud functions describe "$fn" --format='json' | \
     jq '.environmentVariables // {} | to_entries[] | select(.key | test("SECRET|PASSWORD|TOKEN|KEY|CREDENTIAL"; "i"))' 2>/dev/null && echo "  -> $fn"
 done
 ```
 
-## KMS の検査
+## KMS Inspection
 
 ```bash
-# KMS キーリング一覧
+# List KMS key rings
 gcloud kms keyrings list --location=global --format='table(name)'
 
-# キーローテーション期間の確認（CIS 1.10）
+# Verify key rotation period (CIS 1.10)
 for keyring in $(gcloud kms keyrings list --location=global --format='value(name)'); do
   for key in $(gcloud kms keys list --keyring="$keyring" --location=global --format='value(name)'); do
     gcloud kms keys describe "$key" --keyring="$keyring" --location=global \
@@ -255,7 +255,7 @@ for keyring in $(gcloud kms keyrings list --location=global --format='value(name
   done
 done
 
-# KMS キーの IAM ポリシー確認
+# Verify KMS key IAM policies
 for keyring in $(gcloud kms keyrings list --location=global --format='value(name)'); do
   for key in $(gcloud kms keys list --keyring="$keyring" --location=global --format='value(name)'); do
     gcloud kms keys get-iam-policy "$key" --keyring="$keyring" --location=global \
@@ -264,160 +264,160 @@ for keyring in $(gcloud kms keyrings list --location=global --format='value(name
 done
 ```
 
-## Cloud Audit Logs の検査
+## Cloud Audit Logs Inspection
 
 ```bash
-# 監査ログの設定確認（CIS 2.1）
+# Verify audit log configuration (CIS 2.1)
 gcloud projects get-iam-policy $(gcloud config get-value project) \
   --format='json' | jq '.auditConfigs'
 
-# データアクセスログの有効化確認
+# Verify data access logs are enabled
 gcloud projects get-iam-policy $(gcloud config get-value project) \
   --format='json' | jq '.auditConfigs[] | select(.auditLogConfigs[].logType == "DATA_READ" or .auditLogConfigs[].logType == "DATA_WRITE")'
 
-# ログシンクの確認（エクスポート先）
+# Verify log sinks (export destinations)
 gcloud logging sinks list --format='table(name, destination, filter)'
 
-# ログベースのメトリクスとアラート
+# Log-based metrics and alerts
 gcloud logging metrics list --format='table(name, filter)'
 ```
 
-## Security Command Center の検査
+## Security Command Center Inspection
 
 ```bash
-# Security Command Center の検出結果
+# Security Command Center findings
 gcloud scc findings list $(gcloud config get-value project) \
   --filter='state="ACTIVE" AND severity="HIGH" OR severity="CRITICAL"' \
   --format='table(finding.category, finding.severity, finding.resourceName)' 2>/dev/null
 
-# コンプライアンス状態の確認
+# Verify compliance status
 gcloud scc sources list --organization=$(gcloud organizations list --format='value(name)' | head -1) 2>/dev/null
 ```
 
-## Cloud Armor の検査
+## Cloud Armor Inspection
 
 ```bash
-# セキュリティポリシー一覧
+# List security policies
 gcloud compute security-policies list --format='table(name, type)'
 
-# ポリシールールの確認
+# Verify policy rules
 for policy in $(gcloud compute security-policies list --format='value(name)'); do
   echo "=== $policy ==="
   gcloud compute security-policies rules list "$policy" \
     --format='table(priority, action, match.config.srcIpRanges, description)'
 done
 
-# WAF ルールの確認
+# Verify WAF rules
 for policy in $(gcloud compute security-policies list --format='value(name)'); do
   gcloud compute security-policies describe "$policy" \
     --format='json' | jq '.rules[] | select(.match.expr != null) | {priority, action, expression: .match.expr.expression}'
 done
 
-# DDoS 保護（Adaptive Protection）
+# DDoS protection (Adaptive Protection)
 gcloud compute security-policies list --format='json' | \
   jq '.[] | {name, adaptiveProtectionConfig}'
 ```
 
-## Secret Manager の検査
+## Secret Manager Inspection
 
 ```bash
-# シークレット一覧
+# List secrets
 gcloud secrets list --format='table(name, replication.automatic, createTime)'
 
-# シークレットの IAM バインディング確認
+# Verify secret IAM bindings
 for secret in $(gcloud secrets list --format='value(name)'); do
   echo "=== $secret ==="
   gcloud secrets get-iam-policy "$secret" \
     --format='table(bindings.role, bindings.members)' 2>/dev/null
 done
 
-# ローテーション設定の確認
+# Verify rotation configuration
 for secret in $(gcloud secrets list --format='value(name)'); do
   gcloud secrets describe "$secret" \
     --format='json' | jq '{name: .name, rotation: .rotation}' 2>/dev/null
 done
 ```
 
-## コードベースの静的解析
+## Codebase Static Analysis
 
 ```bash
-# GCP サービスアカウントキーファイルの検出
+# Detect GCP service account key files
 grep -rn --include='*.{ts,tsx,js,jsx,py,go,java}' \
   -E '(private_key_id|client_email.*gserviceaccount)' . | grep -v node_modules
 
-# GCP API キーのハードコード
+# Hardcoded GCP API keys
 grep -rn --include='*.{ts,tsx,js,jsx,py,go,java}' \
   -E 'AIza[0-9A-Za-z_-]{35}' . | grep -v node_modules
 
-# サービスアカウント JSON キーファイル
+# Service account JSON key files
 find . -name '*.json' -exec grep -l 'private_key_id' {} \; 2>/dev/null | grep -v node_modules
 ```
 
-## よくある設定ミス
+## Common Misconfigurations
 
-| 深刻度 | 設定ミス | CIS | 影響 |
-|--------|----------|-----|------|
-| Critical | allUsers へのパブリック IAM バインディング | 1.12 | 全ユーザーにリソースアクセス |
-| Critical | GCS バケットのパブリック公開 | 5.1 | データの全公開 |
-| Critical | Cloud SQL の 0.0.0.0/0 承認ネットワーク | 6.5 | データベースへの直接アクセス |
-| Critical | サービスアカウントキーのソースコード含有 | 1.4 | 認証情報の漏洩 |
-| High | Editor/Owner ロールの過剰付与 | 1.6 | 過度な権限 |
-| High | ファイアウォールで SSH が全公開 | 3.6 | 不正アクセスリスク |
-| High | Cloud SQL の SSL 未強制 | 6.4 | 通信の盗聴 |
-| High | デフォルトネットワークの残存 | 3.1 | 意図しないネットワーク公開 |
-| Medium | OS Login 未有効化 | 4.4 | SSH 鍵管理の分散 |
-| Medium | KMS キーローテーション未設定 | 1.10 | 長期間同一鍵の使用 |
-| Medium | Cloud Audit Logs のデータアクセスログ未設定 | 2.1 | 監査証跡の不足 |
-| Medium | Shielded VM 未有効化 | 4.8 | ブート整合性の未検証 |
-| Low | 均一バケットレベルアクセス未使用 | 5.2 | ACL 管理の複雑化 |
-| Low | Private Google Access 未設定 | 3.8 | パブリック IP 経由の通信 |
+| Severity | Misconfiguration | CIS | Impact |
+|----------|------------------|-----|--------|
+| Critical | Public IAM binding to allUsers | 1.12 | Resource access granted to all users |
+| Critical | GCS bucket publicly exposed | 5.1 | Full data exposure |
+| Critical | 0.0.0.0/0 authorized network on Cloud SQL | 6.5 | Direct database access |
+| Critical | Service account keys in source code | 1.4 | Credential leakage |
+| High | Excessive Editor/Owner role grants | 1.6 | Overly broad permissions |
+| High | SSH open to all in firewall | 3.6 | Unauthorized access risk |
+| High | SSL not enforced on Cloud SQL | 6.4 | Traffic interception |
+| High | Default network still exists | 3.1 | Unintended network exposure |
+| Medium | OS Login not enabled | 4.4 | Decentralized SSH key management |
+| Medium | KMS key rotation not configured | 1.10 | Prolonged use of the same key |
+| Medium | Cloud Audit Logs data access logging not configured | 2.1 | Insufficient audit trail |
+| Medium | Shielded VM not enabled | 4.8 | Boot integrity not verified |
+| Low | Uniform bucket-level access not used | 5.2 | ACL management complexity |
+| Low | Private Google Access not configured | 3.8 | Traffic routed via public IPs |
 
-## セキュリティチェックリスト
+## Security Checklist
 
-### IAM（CIS 1.x）
-- [ ] allUsers / allAuthenticatedUsers のバインディングがない
-- [ ] Editor/Owner ロールが最小限のメンバーに制限されている
-- [ ] サービスアカウントキーが定期的にローテーションされている
-- [ ] デフォルトサービスアカウントが使用されていない
-- [ ] Workload Identity が可能な箇所で使用されている
-- [ ] 組織ポリシーでドメイン制限が設定されている
+### IAM (CIS 1.x)
+- [ ] No allUsers / allAuthenticatedUsers bindings exist
+- [ ] Editor/Owner roles are restricted to minimal members
+- [ ] Service account keys are rotated regularly
+- [ ] Default service accounts are not in use
+- [ ] Workload Identity is used where possible
+- [ ] Domain restriction is set in organization policies
 
-### GCS（CIS 5.x）
-- [ ] パブリックバケットが存在しない
-- [ ] 均一バケットレベルアクセスが有効
-- [ ] CMEK またはデフォルト暗号化が設定されている
-- [ ] バケットのアクセスログが有効
-- [ ] バージョニングが有効
+### GCS (CIS 5.x)
+- [ ] No public buckets exist
+- [ ] Uniform bucket-level access is enabled
+- [ ] CMEK or default encryption is configured
+- [ ] Bucket access logging is enabled
+- [ ] Versioning is enabled
 
-### ネットワーク（CIS 3.x）
-- [ ] デフォルトネットワークが削除されている
-- [ ] SSH（22）が特定 IP に制限されている
-- [ ] RDP（3389）が特定 IP に制限されている
-- [ ] Private Google Access が有効
-- [ ] VPC Service Controls が設定されている
+### Network (CIS 3.x)
+- [ ] Default network is deleted
+- [ ] SSH (22) is restricted to specific IPs
+- [ ] RDP (3389) is restricted to specific IPs
+- [ ] Private Google Access is enabled
+- [ ] VPC Service Controls are configured
 
-### コンピュート（CIS 4.x）
-- [ ] OS Login が有効
-- [ ] Shielded VM が有効
-- [ ] デフォルトサービスアカウントを使用するインスタンスがない
-- [ ] シリアルポートが無効化されている
-- [ ] パブリック IP が最小限
+### Compute (CIS 4.x)
+- [ ] OS Login is enabled
+- [ ] Shielded VM is enabled
+- [ ] No instances using default service accounts
+- [ ] Serial port is disabled
+- [ ] Public IPs are minimized
 
-### データベース（CIS 6.x）
-- [ ] Cloud SQL にパブリック IP が設定されていない
-- [ ] SSL が強制されている
-- [ ] 承認済みネットワークに 0.0.0.0/0 がない
-- [ ] 自動バックアップが有効
-- [ ] Point-in-Time Recovery が有効
+### Database (CIS 6.x)
+- [ ] Cloud SQL does not have public IP configured
+- [ ] SSL is enforced
+- [ ] No 0.0.0.0/0 in authorized networks
+- [ ] Automated backups are enabled
+- [ ] Point-in-Time Recovery is enabled
 
-### ロギング・モニタリング（CIS 2.x）
-- [ ] Cloud Audit Logs のデータアクセスログが有効
-- [ ] ログシンクが適切に設定されている
-- [ ] ログベースのアラートが設定されている
-- [ ] Security Command Center が有効
+### Logging and Monitoring (CIS 2.x)
+- [ ] Cloud Audit Logs data access logging is enabled
+- [ ] Log sinks are properly configured
+- [ ] Log-based alerts are configured
+- [ ] Security Command Center is enabled
 
-### シークレット管理
-- [ ] Secret Manager を使用している
-- [ ] シークレットのローテーションが設定されている
-- [ ] サービスアカウントキーがソースコードに含まれていない
-- [ ] API キーがハードコードされていない
+### Secret Management
+- [ ] Secret Manager is in use
+- [ ] Secret rotation is configured
+- [ ] Service account keys are not included in source code
+- [ ] API keys are not hardcoded

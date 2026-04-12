@@ -1,280 +1,280 @@
 # Supply Chain Security Reference
 
-ソフトウェアサプライチェーンの脆弱性検出と対策ガイド。
+A guide for detecting and mitigating vulnerabilities in the software supply chain.
 
-## SBOM（Software Bill of Materials）生成
+## SBOM (Software Bill of Materials) Generation
 
-### リスク
+### Risk
 
-SBOM が未整備の場合、プロジェクトに含まれる全依存関係の把握が困難になり、脆弱性対応が遅れる。規制要件（米国大統領令 14028、EU CRA）への準拠にも必要。
+When an SBOM is not maintained, it becomes difficult to grasp all dependencies included in a project, delaying vulnerability response. It is also required for compliance with regulatory requirements (US Executive Order 14028, EU CRA).
 
-### 検査パターン
+### Inspection Patterns
 
 ```bash
-# SBOM ファイルの存在確認
+# Check for existence of SBOM files
 find . -maxdepth 3 -name '*.spdx*' -o -name '*.cdx*' -o -name 'bom.*' \
   -o -name 'sbom.*' 2>/dev/null | head -20
 
-# CycloneDX / SPDX ツールの設定確認
+# Check for CycloneDX / SPDX tool configuration
 grep -rn --include='package.json' \
   -E '(@cyclonedx|spdx-sbom-generator|syft|cdxgen)' .
 
-# CI/CD での SBOM 生成ステップ確認
+# Check for SBOM generation steps in CI/CD
 grep -rn --include='*.yml' --include='*.yaml' \
   -E '(cyclonedx|spdx|syft|cdxgen|sbom)' .github/ .gitlab-ci.yml 2>/dev/null
 ```
 
-| ツール | 対応フォーマット | 対応言語 |
-|--------|-----------------|----------|
-| syft | CycloneDX, SPDX | 多言語対応 |
+| Tool | Supported Formats | Supported Languages |
+|------|-------------------|---------------------|
+| syft | CycloneDX, SPDX | Multi-language support |
 | cdxgen | CycloneDX | Node.js, Java, Python, Go |
-| trivy sbom | CycloneDX, SPDX | コンテナ・ファイルシステム |
+| trivy sbom | CycloneDX, SPDX | Containers & filesystems |
 
-## Dependency Provenance（依存性の来歴）
+## Dependency Provenance
 
-### リスク
+### Risk
 
-パッケージの公開元が正当であることを検証しない場合、改ざんされたパッケージを取り込むリスクがある。
+If the legitimacy of a package's publisher is not verified, there is a risk of incorporating tampered packages.
 
-### 検査パターン
+### Inspection Patterns
 
 ```bash
-# npm provenance 対応の確認
+# Check for npm provenance support
 grep -rn '"provenance"' package.json .npmrc 2>/dev/null
 
-# .npmrc のレジストリ設定確認
+# Check registry settings in .npmrc
 cat .npmrc 2>/dev/null | grep -E '(registry|@.*:registry)'
 
-# SLSA provenance の検証設定
+# Check for SLSA provenance verification settings
 grep -rn --include='*.yml' --include='*.yaml' \
   -E '(slsa-verifier|cosign|sigstore|attest)' .github/ 2>/dev/null
 ```
 
-| SLSA レベル | 要件 | 保護対象 |
-|-------------|------|----------|
-| Level 1 | ビルドプロセスの文書化 | ビルド元の可視性 |
-| Level 2 | ホストされたビルドサービス | ビルド改ざん防止 |
-| Level 3 | ビルド環境の分離 | ソース・ビルドの完全性 |
-| Level 4 | 二者レビュー + 再現可能ビルド | 内部脅威防止 |
+| SLSA Level | Requirements | Protection Scope |
+|------------|-------------|------------------|
+| Level 1 | Build process documentation | Build origin visibility |
+| Level 2 | Hosted build service | Build tampering prevention |
+| Level 3 | Build environment isolation | Source & build integrity |
+| Level 4 | Two-party review + reproducible builds | Insider threat prevention |
 
-## Typosquatting（タイポスクワッティング）検出
+## Typosquatting Detection
 
-### リスク
+### Risk
 
-正規パッケージ名に酷似した悪意あるパッケージをインストールさせる攻撃。`lodash` → `lodahs`、`react` → `reactt` 等。
+An attack that tricks users into installing malicious packages with names closely resembling legitimate packages. Examples: `lodash` -> `lodahs`, `react` -> `reactt`.
 
-### 検査パターン
+### Inspection Patterns
 
 ```bash
-# package.json の全依存関係を抽出し確認
+# Extract and review all dependencies from package.json
 cat package.json | grep -E '"[^"]+":' | \
   grep -v -E '(name|version|description|scripts|devDependencies|dependencies|peerDependencies)'
 
-# よくあるタイポスクワットパターンの検出（npm）
+# Detect common typosquatting patterns (npm)
 grep -E --include='package.json' \
   -i '(crossenv|cross-env\.|babelcli|babel-clli|event-stream|flatmap-stream)' package.json 2>/dev/null
 
-# PyPI の typosquat 検出
+# Detect PyPI typosquats
 grep -E '(python-dateutil|python_dateutil|dateuti1|requets|reqeusts)' \
   requirements*.txt setup.py pyproject.toml 2>/dev/null
 
-# RubyGems の typosquat 検出
+# Detect RubyGems typosquats
 grep -E '(activesupport|active_suport|active-support)' Gemfile 2>/dev/null
 ```
 
-**よくあるタイポスクワットパターン**:
-- 文字の入れ替え: `lodash` → `lodahs`
-- 文字の追加/削除: `colors` → `colour`
-- ハイフン/アンダースコアの変更: `cross-env` → `crossenv`
-- スコープの偽装: `@angular/core` → `angular-core`
+**Common Typosquatting Patterns**:
+- Character transposition: `lodash` -> `lodahs`
+- Character addition/removal: `colors` -> `colour`
+- Hyphen/underscore changes: `cross-env` -> `crossenv`
+- Scope impersonation: `@angular/core` -> `angular-core`
 
-## Lock File Integrity（ロックファイルの完全性）
+## Lock File Integrity
 
-### リスク
+### Risk
 
-ロックファイルが改ざんされると、意図しないパッケージバージョンやレジストリからの取得が発生する。
+If a lock file is tampered with, unintended package versions or packages from unauthorized registries may be fetched.
 
-### 検査パターン
+### Inspection Patterns
 
 ```bash
-# ロックファイルの存在確認
+# Check for existence of lock files
 ls -la package-lock.json yarn.lock pnpm-lock.yaml Gemfile.lock \
   go.sum Cargo.lock poetry.lock 2>/dev/null
 
-# package-lock.json 内の不審なレジストリ URL
+# Suspicious registry URLs in package-lock.json
 grep -n '"resolved"' package-lock.json 2>/dev/null | \
   grep -v 'registry.npmjs.org' | head -20
 
-# yarn.lock 内の不審なレジストリ URL
+# Suspicious registry URLs in yarn.lock
 grep -n 'resolved "' yarn.lock 2>/dev/null | \
   grep -v 'registry.yarnpkg.com\|registry.npmjs.org' | head -20
 
-# ロックファイルが Git 追跡されているか
+# Check if lock files are tracked by Git
 git ls-files package-lock.json yarn.lock pnpm-lock.yaml \
   Gemfile.lock go.sum Cargo.lock 2>/dev/null
 
-# lockfile-lint による検証（npm/yarn）
+# Verification with lockfile-lint (npm/yarn)
 # npx lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --validate-https
 ```
 
-## Pre/Post Install Scripts（インストールスクリプト）
+## Pre/Post Install Scripts
 
-### リスク
+### Risk
 
-npm の `preinstall` / `postinstall` スクリプトや pip の `setup.py` は、パッケージインストール時に任意のコードを実行できる。
+npm `preinstall` / `postinstall` scripts and pip `setup.py` can execute arbitrary code during package installation.
 
-### 検査パターン
+### Inspection Patterns
 
 ```bash
-# package.json の危険なスクリプト検出
+# Detect dangerous scripts in package.json
 grep -A 1 -E '"(preinstall|postinstall|preuninstall|postuninstall|prepare)"' \
   package.json node_modules/*/package.json 2>/dev/null | \
   grep -v 'node_modules/.package-lock' | head -30
 
-# node_modules 内の postinstall スクリプト一覧
+# List postinstall scripts in node_modules
 find node_modules -maxdepth 2 -name 'package.json' -exec \
   grep -l '"postinstall"' {} \; 2>/dev/null
 
-# .npmrc で ignore-scripts の設定確認
+# Check for ignore-scripts setting in .npmrc
 grep 'ignore-scripts' .npmrc 2>/dev/null
 
-# pip の setup.py 内の危険なコード
+# Detect dangerous code in pip setup.py
 grep -rn --include='setup.py' \
   -E '(os\.system|subprocess|exec\(|eval\(|urllib|requests\.get)' . 2>/dev/null
 ```
 
-## Dependency Confusion（依存性の混同）
+## Dependency Confusion
 
-### リスク
+### Risk
 
-内部パッケージ名と同名のパッケージを公開レジストリに登録し、ビルドシステムに悪意あるパッケージを取得させる攻撃。
+An attack that registers a package with the same name as an internal package on a public registry, causing the build system to fetch the malicious package.
 
-### 検査パターン
+### Inspection Patterns
 
 ```bash
-# スコープなしの内部パッケージの検出
+# Detect internal packages without a scope
 grep -E '"[^@][^"]*":' package.json | \
   grep -v -E '(react|next|express|lodash|typescript|eslint|prettier|webpack|babel|jest)'
 
-# .npmrc のスコープレジストリ設定
+# Check scope registry settings in .npmrc
 grep -E '@.*:registry' .npmrc 2>/dev/null
 
-# pip の --extra-index-url（混同リスク）
+# pip --extra-index-url (confusion risk)
 grep -rn 'extra-index-url\|--index-url' pip.conf requirements*.txt \
   pyproject.toml setup.cfg 2>/dev/null
 
-# Go のプライベートモジュール設定
+# Go private module settings
 grep 'GOPRIVATE\|GONOSUMDB\|GONOSUMCHECK' go.env .env* 2>/dev/null
 cat go.env 2>/dev/null
 ```
 
-**対策**:
-- npm: `@org/` スコープを使用し、スコープレジストリを固定
-- pip: `--index-url` のみ使用し `--extra-index-url` を避ける
-- Go: `GOPRIVATE` を設定
+**Mitigations**:
+- npm: Use `@org/` scopes and pin the scope registry
+- pip: Use only `--index-url` and avoid `--extra-index-url`
+- Go: Set `GOPRIVATE`
 
-## License Compliance（ライセンスコンプライアンス）
+## License Compliance
 
-### リスク
+### Risk
 
-GPL 等の Copyleft ライセンスのパッケージを含めると、プロジェクト全体にライセンス条件が波及する可能性がある。
+Including packages with Copyleft licenses such as GPL may cause the license terms to propagate to the entire project.
 
-### 検査パターン
+### Inspection Patterns
 
 ```bash
-# npm パッケージのライセンス一覧
+# List npm package licenses
 npx license-checker --summary 2>/dev/null || \
   npx license-checker --csv 2>/dev/null | head -30
 
-# GPL 系ライセンスの検出
+# Detect GPL-family licenses
 npx license-checker --csv 2>/dev/null | grep -iE '(GPL|AGPL|LGPL|SSPL|EUPL)'
 
-# pip のライセンス確認
+# Check pip licenses
 pip-licenses --format=csv 2>/dev/null | grep -iE '(GPL|AGPL|LGPL|SSPL)'
 
-# Go のライセンス確認
+# Check Go licenses
 go-licenses csv ./... 2>/dev/null | grep -iE '(GPL|AGPL|LGPL)'
 ```
 
-| ライセンス | 種別 | 商用利用時の注意 |
-|-----------|------|-----------------|
-| MIT / BSD / Apache-2.0 | Permissive | 制限少ない |
-| LGPL-2.1 / LGPL-3.0 | Weak Copyleft | 動的リンクは許可 |
-| GPL-2.0 / GPL-3.0 | Strong Copyleft | 派生物に GPL 適用必須 |
-| AGPL-3.0 | Network Copyleft | SaaS 利用にも適用 |
-| SSPL | Source Available | クラウドサービスに制限 |
+| License | Type | Commercial Use Notes |
+|---------|------|---------------------|
+| MIT / BSD / Apache-2.0 | Permissive | Few restrictions |
+| LGPL-2.1 / LGPL-3.0 | Weak Copyleft | Dynamic linking permitted |
+| GPL-2.0 / GPL-3.0 | Strong Copyleft | GPL must be applied to derivatives |
+| AGPL-3.0 | Network Copyleft | Also applies to SaaS usage |
+| SSPL | Source Available | Restrictions on cloud services |
 
-## Vulnerability Scanning（脆弱性スキャン）
+## Vulnerability Scanning
 
-### 検査パターン
+### Inspection Patterns
 
 ```bash
-# npm audit（Node.js）
+# npm audit (Node.js)
 npm audit --json 2>/dev/null | head -50
 npm audit --audit-level=high 2>/dev/null
 
-# pip-audit（Python）
+# pip-audit (Python)
 pip-audit --format=json 2>/dev/null | head -50
 
-# cargo-audit（Rust）
+# cargo-audit (Rust)
 cargo audit 2>/dev/null
 
-# bundler-audit（Ruby）
+# bundler-audit (Ruby)
 bundle audit check --update 2>/dev/null
 
-# govulncheck（Go）
+# govulncheck (Go)
 govulncheck ./... 2>/dev/null
 
-# CI/CD でのスキャン設定確認
+# Check for scanning configuration in CI/CD
 grep -rn --include='*.yml' --include='*.yaml' \
   -E '(npm audit|pip-audit|cargo.audit|bundler-audit|govulncheck|trivy|snyk|dependabot)' \
   .github/ .gitlab-ci.yml 2>/dev/null
 
-# Dependabot / Renovate の設定確認
+# Check Dependabot / Renovate configuration
 cat .github/dependabot.yml 2>/dev/null
 cat renovate.json renovate.json5 .renovaterc 2>/dev/null
 ```
 
-## Version Pinning（バージョン固定とハッシュ検証）
+## Version Pinning and Hash Verification
 
-### リスク
+### Risk
 
-バージョン範囲指定（`^`, `~`, `*`）では、新しいバージョンに含まれる脆弱性を自動的に取り込むリスクがある。
+Version range specifications (`^`, `~`, `*`) carry a risk of automatically incorporating vulnerabilities included in newer versions.
 
-### 検査パターン
+### Inspection Patterns
 
 ```bash
-# package.json のバージョン範囲指定検出
+# Detect version range specifications in package.json
 grep -E '"[^^~><=*]' package.json | grep -v -E '(name|version|description|scripts)' | head -5
 grep -E '(\^|~|\*|>=|>)' package.json | grep -v 'node_modules' | head -20
 
-# requirements.txt のピン留めなし検出
+# Detect unpinned versions in requirements.txt
 grep -v -E '(==|#|^$|^-r)' requirements.txt 2>/dev/null
 
-# Gemfile のピン留めなし検出
+# Detect unpinned versions in Gemfile
 grep -E "gem ['\"]" Gemfile 2>/dev/null | grep -v -E '(~>|>=|=)'
 
-# go.mod の間接依存の確認
+# Check indirect dependencies in go.mod
 grep 'indirect' go.mod 2>/dev/null | wc -l
 
-# pip の hash 検証モード
+# pip hash verification mode
 grep -E '(--require-hashes|hash=sha256)' requirements*.txt 2>/dev/null
 
-# npm の package-lock.json integrity 確認
+# Check package-lock.json integrity
 grep '"integrity"' package-lock.json 2>/dev/null | head -5
 ```
 
-## サプライチェーンセキュリティチェックリスト
+## Supply Chain Security Checklist
 
-- [ ] SBOM が生成され、定期的に更新されている
-- [ ] ロックファイルが Git で管理され、CI/CD で整合性検証されている
-- [ ] 全依存パッケージが公式レジストリから取得されている
-- [ ] 内部パッケージにスコープ（`@org/`）が設定されている
-- [ ] npm/pip/gem のインストールスクリプトが検証されている
-- [ ] 自動脆弱性スキャン（Dependabot / Renovate 等）が有効
-- [ ] GPL/AGPL 等の Copyleft ライセンスが商用要件と矛盾していない
-- [ ] バージョンがピン留めまたはロックファイルで固定されている
-- [ ] CI/CD で `npm audit` / `pip-audit` 等が実行されている
-- [ ] `.npmrc` で `ignore-scripts=true` が設定されている（必要に応じて例外追加）
-- [ ] SLSA provenance または npm provenance が有効
-- [ ] タイポスクワッティングチェックが定期的に実施されている
+- [ ] SBOM is generated and regularly updated
+- [ ] Lock files are managed in Git and integrity is verified in CI/CD
+- [ ] All dependency packages are fetched from official registries
+- [ ] Internal packages have scopes (`@org/`) configured
+- [ ] npm/pip/gem install scripts have been verified
+- [ ] Automated vulnerability scanning (Dependabot / Renovate, etc.) is enabled
+- [ ] GPL/AGPL and other Copyleft licenses do not conflict with commercial requirements
+- [ ] Versions are pinned or locked via lock files
+- [ ] `npm audit` / `pip-audit` etc. are executed in CI/CD
+- [ ] `ignore-scripts=true` is set in `.npmrc` (with exceptions added as needed)
+- [ ] SLSA provenance or npm provenance is enabled
+- [ ] Typosquatting checks are performed regularly

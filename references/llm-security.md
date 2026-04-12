@@ -1,130 +1,130 @@
 # LLM / AI Security Reference
 
-OWASP Top 10 for LLM Applications (2025) に基づく LLM アプリケーションのセキュリティ検査ガイド。
+A security inspection guide for LLM applications based on the OWASP Top 10 for LLM Applications (2025).
 
-## LLM01: Prompt Injection（プロンプトインジェクション）
+## LLM01: Prompt Injection
 
-### リスク
+### Risk
 
-攻撃者がプロンプトを操作し、LLM の動作を意図しない方向に誘導する。直接インジェクション（ユーザー入力）と間接インジェクション（外部データソース経由）がある。
+An attacker manipulates prompts to steer the LLM's behavior in unintended directions. This includes direct injection (via user input) and indirect injection (via external data sources).
 
-### 検査パターン
+### Inspection Patterns
 
 ```bash
-# ユーザー入力がプロンプトに直接結合されている箇所
+# Locations where user input is directly concatenated into prompts
 grep -rn --include='*.{ts,js,py,rb,go}' \
   -E '(prompt|system_message|messages).*(\+|concat|format|f['\''"]|template|`\$\{)' \
   . 2>/dev/null | grep -v node_modules
 
-# プロンプトテンプレートの検出
+# Detect prompt templates
 grep -rn --include='*.{ts,js,py}' \
   -E '(ChatPromptTemplate|PromptTemplate|SystemMessage|HumanMessage)' \
   . 2>/dev/null | grep -v node_modules
 
-# ユーザー入力のサニタイズ確認
+# Check for user input sanitization
 grep -rn --include='*.{ts,js,py}' \
   -iE '(sanitize|escape|filter|validate).*prompt' \
   . 2>/dev/null | grep -v node_modules
 
-# プロンプトガード / 入力フィルタリングの検出
+# Detect prompt guards / input filtering
 grep -rn --include='*.{ts,js,py}' \
   -iE '(prompt.?guard|input.?filter|content.?filter|moderation|guardrail)' \
   . 2>/dev/null | grep -v node_modules
 ```
 
-**対策**:
-- システムプロンプトとユーザー入力を明確に分離
-- 入力の長さ制限とサニタイズ
-- LLM 出力の検証（出力ガードレール）
-- 権限の最小化（LLM が実行できるアクションを制限）
+**Mitigations**:
+- Clearly separate system prompts from user input
+- Apply input length limits and sanitization
+- Validate LLM output (output guardrails)
+- Minimize permissions (restrict actions the LLM can perform)
 
-## LLM02: Insecure Output Handling（安全でない出力処理）
+## LLM02: Insecure Output Handling
 
-### リスク
+### Risk
 
-LLM の出力を検証なしにアプリケーションに渡すと、XSS、SSRF、コマンドインジェクション等の二次攻撃が発生する。
+Passing LLM output to an application without validation can lead to secondary attacks such as XSS, SSRF, and command injection.
 
 ```bash
-# LLM 出力の直接 HTML 挿入（XSS リスク）
-# dangerouslySetInnerHTML, innerHTML, v-html の使用箇所を確認
+# Direct HTML insertion of LLM output (XSS risk)
+# Check usage of dangerouslySetInnerHTML, innerHTML, v-html
 grep -rn --include='*.{ts,tsx,js,jsx}' \
   -E '(innerHTML|v-html)' \
   . 2>/dev/null | grep -v node_modules
 
-# LLM 出力の eval / exec 実行
+# eval / exec execution of LLM output
 grep -rn --include='*.{ts,js,py}' \
   -E '(eval\(|exec\(|Function\(|subprocess).*\b(response|output|result|completion|content)\b' \
   . 2>/dev/null | grep -v node_modules
 
-# LLM 出力を URL として使用（SSRF リスク）
+# Using LLM output as a URL (SSRF risk)
 grep -rn --include='*.{ts,js,py}' \
   -E '(fetch|axios|requests\.(get|post)|urllib|http\.get).*\b(response|output|result|content)\b' \
   . 2>/dev/null | grep -v node_modules
 
-# Markdown / HTML レンダリングの検出
+# Detect Markdown / HTML rendering
 grep -rn --include='*.{ts,tsx,js,jsx}' \
   -E '(react-markdown|remark|rehype|marked|DOMPurify|sanitize-html)' \
   . 2>/dev/null | grep -v node_modules
 ```
 
-## LLM03: Training Data Poisoning（学習データの汚染）
+## LLM03: Training Data Poisoning
 
-### リスク
+### Risk
 
-ファインチューニングデータや RAG のデータソースが汚染されると、モデルの出力が操作される。
+If fine-tuning data or RAG data sources are poisoned, the model's output can be manipulated.
 
 ```bash
-# ファインチューニングデータの検出
+# Detect fine-tuning data
 find . -name '*.jsonl' -o -name 'training_data*' -o -name 'finetune*' \
   -o -name 'dataset*' 2>/dev/null | grep -v node_modules | head -10
 
-# ファインチューニング API の使用
+# Usage of fine-tuning APIs
 grep -rn --include='*.{ts,js,py}' \
   -E '(fine.?tun|FineTuning|create_fine_tuning|training_file)' \
   . 2>/dev/null | grep -v node_modules
 
-# データ検証パイプラインの確認
+# Check for data validation pipelines
 grep -rn --include='*.{ts,js,py}' \
   -iE '(data.?valid|schema.?valid|input.?check|data.?clean)' \
   . 2>/dev/null | grep -v node_modules
 ```
 
-## LLM04: Model Denial of Service（モデル DoS）
+## LLM04: Model Denial of Service
 
-### リスク
+### Risk
 
-大量のトークン消費や繰り返しリクエストにより、API コストの急増やサービス停止が発生する。
+Excessive token consumption or repeated requests can cause a spike in API costs or service outages.
 
 ```bash
-# トークン制限の設定確認
+# Check token limit settings
 grep -rn --include='*.{ts,js,py}' \
   -E '(max_tokens|maxTokens|max_completion_tokens|token.?limit|max_length)' \
   . 2>/dev/null | grep -v node_modules
 
-# レート制限の実装確認
+# Check rate limiting implementation
 grep -rn --include='*.{ts,js,py}' \
   -iE '(rate.?limit|throttle|limiter|RateLimiter|slowDown)' \
   . 2>/dev/null | grep -v node_modules
 
-# コスト制限 / 予算制御の確認
+# Check cost limiting / budget controls
 grep -rn --include='*.{ts,js,py}' \
   -iE '(budget|cost.?limit|spending.?limit|usage.?limit|max.?cost)' \
   . 2>/dev/null | grep -v node_modules
 
-# 入力長の制限確認
+# Check input length limits
 grep -rn --include='*.{ts,js,py}' \
   -iE '(input.?length|max.?input|content.?length|truncat)' \
   . 2>/dev/null | grep -v node_modules
 ```
 
-## LLM05: Supply Chain Vulnerabilities（サプライチェーン）
+## LLM05: Supply Chain Vulnerabilities
 
-### リスク
+### Risk
 
-悪意あるモデル、改ざんされた AI ライブラリ、不正なプラグインにより、アプリケーション全体が侵害される。
+Malicious models, tampered AI libraries, or rogue plugins can compromise the entire application.
 
 ```bash
-# AI/ML ライブラリの依存関係確認
+# Check AI/ML library dependencies
 grep -rn --include='package.json' \
   -E '(openai|@anthropic-ai|langchain|llamaindex|@langchain|ai|@ai-sdk)' \
   . 2>/dev/null | grep -v node_modules
@@ -133,265 +133,265 @@ grep -rn --include='requirements*.txt' --include='pyproject.toml' \
   -E '(openai|anthropic|langchain|llama.index|transformers|torch|huggingface)' \
   . 2>/dev/null
 
-# モデルファイルの直接ダウンロード（検証なし）
+# Direct model file downloads (without verification)
 grep -rn --include='*.{ts,js,py}' \
   -E '(download.*model|from_pretrained|AutoModel|pipeline\()' \
   . 2>/dev/null | grep -v node_modules
 
-# Pickle / 非安全なデシリアライゼーション
+# Pickle / unsafe deserialization
 grep -rn --include='*.py' \
   -E '(pickle\.load|torch\.load|joblib\.load|np\.load.*allow_pickle)' \
   . 2>/dev/null | grep -v node_modules
 ```
 
-## LLM06: Sensitive Information Disclosure（機密情報の漏洩）
+## LLM06: Sensitive Information Disclosure
 
-### リスク
+### Risk
 
-プロンプトに含まれる PII（個人情報）、システムプロンプトの漏洩、モデルの記憶による機密データ出力。
+PII (Personally Identifiable Information) included in prompts, system prompt leakage, and model memory outputting sensitive data.
 
 ```bash
-# PII がプロンプトに含まれる可能性
+# Potential PII inclusion in prompts
 grep -rn --include='*.{ts,js,py}' \
   -iE '(user\.(email|name|phone|address|ssn)|personal|pii|credit.?card).*prompt' \
   . 2>/dev/null | grep -v node_modules
 
-# システムプロンプトの保護確認
+# Check system prompt protection
 grep -rn --include='*.{ts,js,py}' \
   -iE '(system.?prompt|system.?message|SYSTEM_PROMPT)' \
   . 2>/dev/null | grep -v node_modules
 
-# ログへのプロンプト / レスポンス記録
+# Logging of prompts / responses
 grep -rn --include='*.{ts,js,py}' \
   -E '(console\.log|logger\.|logging\.).*\b(prompt|message|completion|response)\b' \
   . 2>/dev/null | grep -v node_modules
 
-# PII マスキング / 匿名化の実装
+# PII masking / anonymization implementation
 grep -rn --include='*.{ts,js,py}' \
   -iE '(anonymize|mask|redact|scrub|pii.?filter|presidio)' \
   . 2>/dev/null | grep -v node_modules
 ```
 
-## LLM07: Insecure Plugin Design（安全でないプラグイン設計）
+## LLM07: Insecure Plugin Design
 
-### リスク
+### Risk
 
-LLM が外部ツール / Function Calling を使用する際、入力の検証不足や過剰な権限が脆弱性を生む。
+When an LLM uses external tools / Function Calling, insufficient input validation or excessive permissions create vulnerabilities.
 
 ```bash
-# Function Calling / Tool Use の定義
+# Function Calling / Tool Use definitions
 grep -rn --include='*.{ts,js,py}' \
   -E '(tools|functions|function_call|tool_choice|tool_use)' \
   . 2>/dev/null | grep -v node_modules | head -30
 
-# ツール実行の入力検証
+# Tool execution input validation
 grep -rn --include='*.{ts,js,py}' \
   -iE '(tool.?input|function.?arg|parameter.?valid|schema.?valid)' \
   . 2>/dev/null | grep -v node_modules
 
-# LangChain / LlamaIndex のツール定義
+# LangChain / LlamaIndex tool definitions
 grep -rn --include='*.{ts,js,py}' \
   -E '(Tool\(|StructuredTool|BaseTool|FunctionTool|QueryEngineTool)' \
   . 2>/dev/null | grep -v node_modules
 
-# ツールが実行するデータベース / ファイル操作
+# Database / file operations executed by tools
 grep -rn --include='*.{ts,js,py}' \
   -E '(tool|agent).*(execute|run|invoke|call)' \
   . 2>/dev/null | grep -v node_modules | head -20
 ```
 
-## LLM08: Excessive Agency（過剰なエージェント権限）
+## LLM08: Excessive Agency
 
-### リスク
+### Risk
 
-LLM エージェントに過剰なアクション権限（データ削除、メール送信、支払い実行等）を付与すると、ハルシネーションやプロンプトインジェクション経由で意図しない操作が実行される。
+Granting excessive action permissions (data deletion, email sending, payment execution, etc.) to an LLM agent allows unintended operations via hallucinations or prompt injection.
 
 ```bash
-# エージェントフレームワークの使用検出
+# Detect usage of agent frameworks
 grep -rn --include='*.{ts,js,py}' \
   -E '(AgentExecutor|create_agent|initialize_agent|ReActAgent|AutoGPT|CrewAI)' \
   . 2>/dev/null | grep -v node_modules
 
-# 自律実行の確認（human-in-the-loop なし）
+# Check for autonomous execution (no human-in-the-loop)
 grep -rn --include='*.{ts,js,py}' \
   -iE '(auto.?execute|auto.?run|human.?in.?the.?loop|confirm|approval|require.?human)' \
   . 2>/dev/null | grep -v node_modules
 
-# 危険なアクション（データ削除、メール送信等）
+# Dangerous actions (data deletion, email sending, etc.)
 grep -rn --include='*.{ts,js,py}' \
   -iE '(delete|remove|drop|send.?email|transfer|payment|deploy)' \
   . 2>/dev/null | grep -v node_modules | \
   grep -iE '(tool|action|function|agent)' | head -20
 ```
 
-## LLM09: Overreliance（過度な依存）
+## LLM09: Overreliance
 
-### リスク
+### Risk
 
-LLM の出力を検証せずに信頼すると、ハルシネーションによる誤情報や不正確なコード生成がシステムに組み込まれる。
+Trusting LLM output without verification can result in misinformation from hallucinations or inaccurate code generation being incorporated into the system.
 
 ```bash
-# ファクトチェック / 検証メカニズムの確認
+# Check for fact-checking / verification mechanisms
 grep -rn --include='*.{ts,js,py}' \
   -iE '(fact.?check|verify|validate.?output|confidence|certainty|ground.?truth)' \
   . 2>/dev/null | grep -v node_modules
 
-# LLM 出力の直接使用（検証なし）
+# Direct use of LLM output (without verification)
 grep -rn --include='*.{ts,js,py}' \
   -E '(completion|response|output)\.(content|text|message)' \
   . 2>/dev/null | grep -v node_modules | head -20
 ```
 
-## LLM10: Model Theft（モデル盗難）
+## LLM10: Model Theft
 
-### リスク
+### Risk
 
-API キーの漏洩によるモデルの不正利用、プロプライエタリモデルファイルの流出。
+Unauthorized use of models through API key leakage, or leakage of proprietary model files.
 
 ```bash
-# API キーのハードコード検出
+# Detect hardcoded API keys
 grep -rn --include='*.{ts,js,py}' \
   -E '(OPENAI_API_KEY|ANTHROPIC_API_KEY|api.?key)\s*[:=]\s*['\''"][^'\''"{$]+['\''"]' \
   . 2>/dev/null | grep -v node_modules
 
-# モデルファイルの検出
+# Detect model files
 find . -name '*.gguf' -o -name '*.bin' -o -name '*.safetensors' \
   -o -name '*.onnx' -o -name '*.pt' -o -name '*.pth' \
   2>/dev/null | grep -v node_modules | head -10
 
-# モデルファイルが Git 追跡されているか
+# Check if model files are tracked by Git
 git ls-files | grep -E '\.(gguf|bin|safetensors|onnx|pt|pth)$'
 
-# API キーの環境変数管理確認
+# Check API key management via environment variables
 grep -rn --include='*.{ts,js,py}' \
   -E '(process\.env|os\.environ|os\.getenv).*(OPENAI|ANTHROPIC|API_KEY|LLM)' \
   . 2>/dev/null | grep -v node_modules
 ```
 
-## RAG Security（検索拡張生成のセキュリティ）
+## RAG Security (Retrieval-Augmented Generation)
 
-### リスク
+### Risk
 
-RAG パイプラインのデータソース汚染、ベクトル DB へのアクセス制御不備、Embedding インジェクション。
+Data source poisoning in the RAG pipeline, insufficient access control on vector DBs, and embedding injection.
 
 ```bash
-# ベクトル DB の使用検出
+# Detect vector DB usage
 grep -rn --include='*.{ts,js,py}' \
   -E '(pinecone|weaviate|qdrant|chroma|milvus|pgvector|faiss|VectorStore)' \
   . 2>/dev/null | grep -v node_modules
 
-# ベクトル DB のアクセス制御
+# Vector DB access control
 grep -rn --include='*.{ts,js,py}' \
   -iE '(api.?key|auth|credential|token).*(pinecone|weaviate|qdrant|chroma)' \
   . 2>/dev/null | grep -v node_modules
 
-# ドキュメントローダーの入力検証
+# Document loader input validation
 grep -rn --include='*.{ts,js,py}' \
   -E '(DocumentLoader|TextLoader|PDFLoader|WebBaseLoader|DirectoryLoader|load_documents)' \
   . 2>/dev/null | grep -v node_modules
 
-# Embedding の入力サニタイズ
+# Embedding input sanitization
 grep -rn --include='*.{ts,js,py}' \
   -iE '(embed|embedding).*(sanitize|validate|filter|clean)' \
   . 2>/dev/null | grep -v node_modules
 ```
 
-## MCP Security（Model Context Protocol）
+## MCP Security (Model Context Protocol)
 
-### リスク
+### Risk
 
-MCP サーバーが未検証のツール実行を許可すると、LLM 経由で任意のシステム操作が可能になる。
+If an MCP server allows unverified tool execution, arbitrary system operations become possible via the LLM.
 
 ```bash
-# MCP サーバー設定の検出
+# Detect MCP server configurations
 find . -name 'mcp*.json' -o -name '.mcp*' -o -name 'claude_desktop_config.json' \
   2>/dev/null | head -10
 
-# MCP ツールの定義
+# MCP tool definitions
 grep -rn --include='*.{ts,js,py}' \
   -E '(McpServer|Server|tool\(|@mcp\.tool|ListToolsResult)' \
   . 2>/dev/null | grep -v node_modules | head -20
 
-# MCP の認証・認可設定
+# MCP authentication / authorization settings
 grep -rn --include='*.{ts,js,py,json}' \
   -iE '(mcp.*(auth|token|credential|permission)|allowedTools|toolApproval)' \
   . 2>/dev/null | grep -v node_modules
 ```
 
-## API Security（LLM API のセキュリティ）
+## API Security (LLM API)
 
 ```bash
-# OpenAI / Anthropic SDK の使用
+# OpenAI / Anthropic SDK usage
 grep -rn --include='*.{ts,js,py}' \
   -E '(OpenAI|Anthropic|ChatOpenAI|ChatAnthropic)\(' \
   . 2>/dev/null | grep -v node_modules
 
-# ストリーミングレスポンスの処理
+# Streaming response handling
 grep -rn --include='*.{ts,js,py}' \
   -E '(stream|streaming|createStream|streamText|streamObject)' \
   . 2>/dev/null | grep -v node_modules | head -20
 
-# API エンドポイントの認証
+# API endpoint authentication
 grep -rn --include='*.{ts,js,py}' \
   -E '(api|route|endpoint).*(chat|completion|generate|embed)' \
   . 2>/dev/null | grep -v node_modules | head -20
 
-# トークンカウント / コスト追跡
+# Token count / cost tracking
 grep -rn --include='*.{ts,js,py}' \
   -iE '(token.?count|usage|total_tokens|prompt_tokens|completion_tokens|tiktoken|cost.?track)' \
   . 2>/dev/null | grep -v node_modules
 ```
 
-## OWASP Top 10 for LLM Applications 2025 クイックリファレンス
+## OWASP Top 10 for LLM Applications 2025 Quick Reference
 
-| Rank | カテゴリ | 主な検出パターン |
-|------|---------|-----------------|
-| LLM01 | Prompt Injection | ユーザー入力のプロンプト直接結合、入力フィルタなし |
-| LLM02 | Insecure Output Handling | LLM 出力の HTML 直接挿入、eval 実行 |
-| LLM03 | Training Data Poisoning | ファインチューニングデータの検証不足 |
-| LLM04 | Model DoS | トークン制限なし、レート制限なし |
-| LLM05 | Supply Chain | 未検証の AI ライブラリ、Pickle デシリアライズ |
-| LLM06 | Sensitive Information Disclosure | PII のプロンプト送信、ログへの記録 |
-| LLM07 | Insecure Plugin Design | ツール入力の検証不足、過剰な権限 |
-| LLM08 | Excessive Agency | human-in-the-loop なし、自律実行 |
-| LLM09 | Overreliance | 出力検証なし、ファクトチェック欠如 |
-| LLM10 | Model Theft | API キーのハードコード、モデルファイル露出 |
+| Rank | Category | Key Detection Patterns |
+|------|----------|----------------------|
+| LLM01 | Prompt Injection | Direct concatenation of user input into prompts, no input filtering |
+| LLM02 | Insecure Output Handling | Direct HTML insertion of LLM output, eval execution |
+| LLM03 | Training Data Poisoning | Insufficient validation of fine-tuning data |
+| LLM04 | Model DoS | No token limits, no rate limiting |
+| LLM05 | Supply Chain | Unverified AI libraries, Pickle deserialization |
+| LLM06 | Sensitive Information Disclosure | Sending PII in prompts, logging to records |
+| LLM07 | Insecure Plugin Design | Insufficient tool input validation, excessive permissions |
+| LLM08 | Excessive Agency | No human-in-the-loop, autonomous execution |
+| LLM09 | Overreliance | No output verification, lack of fact-checking |
+| LLM10 | Model Theft | Hardcoded API keys, exposed model files |
 
-## LLM セキュリティチェックリスト
+## LLM Security Checklist
 
-### プロンプト・入出力
+### Prompt & Input/Output
 
-- [ ] ユーザー入力がプロンプトに直接結合されていない（テンプレートで分離）
-- [ ] 入力長の制限が実装されている
-- [ ] プロンプトインジェクション対策（入力フィルタリング / ガードレール）が実装されている
-- [ ] LLM 出力が HTML / SQL / コマンドとして直接実行されていない
-- [ ] LLM 出力のサニタイズ・検証が実装されている
+- [ ] User input is not directly concatenated into prompts (separated via templates)
+- [ ] Input length limits are implemented
+- [ ] Prompt injection countermeasures (input filtering / guardrails) are implemented
+- [ ] LLM output is not directly executed as HTML / SQL / commands
+- [ ] LLM output sanitization and validation are implemented
 
-### 認証・認可
+### Authentication & Authorization
 
-- [ ] LLM API エンドポイントに認証が実装されている
-- [ ] API キーが環境変数で管理されている（ハードコードなし）
-- [ ] レート制限が実装されている
-- [ ] トークン使用量の上限が設定されている
-- [ ] コスト制御・予算制限が設定されている
+- [ ] LLM API endpoints have authentication implemented
+- [ ] API keys are managed via environment variables (not hardcoded)
+- [ ] Rate limiting is implemented
+- [ ] Token usage caps are configured
+- [ ] Cost controls / budget limits are configured
 
-### データ保護
+### Data Protection
 
-- [ ] PII がプロンプトに含まれる場合、マスキング / 匿名化されている
-- [ ] プロンプト / レスポンスのログに機密情報が含まれていない
-- [ ] システムプロンプトの漏洩対策が実装されている
-- [ ] ベクトル DB のアクセス制御が設定されている
+- [ ] PII included in prompts is masked / anonymized
+- [ ] Prompt / response logs do not contain sensitive information
+- [ ] System prompt leakage prevention is implemented
+- [ ] Vector DB access control is configured
 
-### ツール・エージェント
+### Tools & Agents
 
-- [ ] Function Calling / Tool Use の入力が検証されている
-- [ ] ツールの権限が最小化されている
-- [ ] 破壊的アクション（削除、送信等）に human-in-the-loop が実装されている
-- [ ] MCP サーバーの認証・認可が設定されている
+- [ ] Function Calling / Tool Use inputs are validated
+- [ ] Tool permissions are minimized
+- [ ] Destructive actions (deletion, sending, etc.) have human-in-the-loop implemented
+- [ ] MCP server authentication / authorization is configured
 
-### サプライチェーン
+### Supply Chain
 
-- [ ] AI/ML ライブラリが最新バージョンに更新されている
-- [ ] モデルファイルが Git にコミットされていない
-- [ ] Pickle 等の非安全なデシリアライゼーションが使用されていない
-- [ ] ファインチューニングデータの検証パイプラインが存在する
+- [ ] AI/ML libraries are updated to the latest versions
+- [ ] Model files are not committed to Git
+- [ ] Unsafe deserialization such as Pickle is not used
+- [ ] A validation pipeline for fine-tuning data exists

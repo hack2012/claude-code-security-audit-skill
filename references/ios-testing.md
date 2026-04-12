@@ -1,230 +1,230 @@
 # iOS Security Testing Reference
 
-OWASP MASVS v2 / MASTG に基づく詳細検査ガイド。
+Detailed testing guide based on OWASP MASVS v2 / MASTG.
 
-## MASVS-STORAGE: データ保存
+## MASVS-STORAGE: Data Storage
 
-### 検査対象
+### Inspection Targets
 
-- **NSUserDefaults**: 機密データ（トークン、パスワード、個人情報）の保存禁止
-- **Keychain**: アクセス属性の適切性（`kSecAttrAccessibleWhenUnlockedThisDeviceOnly` 推奨）
-- **SQLite/Realm/Core Data**: 暗号化の有無、WAL ファイルの保護
-- **ファイルシステム**: Data Protection クラスの設定
-- **クリップボード**: `UIPasteboard.general` への機密データコピー
-- **バックアップ除外**: iTunes/iCloud バックアップからの機密ファイル除外
-- **ログ出力**: `NSLog` / `os_log` / `print` での機密データ出力
-- **スナップショット**: バックグラウンド遷移時のスクリーンショット保護
+- **NSUserDefaults**: Storing sensitive data (tokens, passwords, personal information) is prohibited
+- **Keychain**: Appropriateness of access attributes (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly` recommended)
+- **SQLite/Realm/Core Data**: Presence of encryption, protection of WAL files
+- **File system**: Data Protection class configuration
+- **Clipboard**: Copying sensitive data to `UIPasteboard.general`
+- **Backup exclusion**: Excluding sensitive files from iTunes/iCloud backups
+- **Log output**: Sensitive data output via `NSLog` / `os_log` / `print`
+- **Snapshots**: Screenshot protection during background transitions
 
 ```bash
-# NSUserDefaults への機密データ保存
+# Sensitive data stored in NSUserDefaults
 grep -rn --include='*.swift' \
   -E 'UserDefaults\.(standard|suite)' . | \
   grep -iE '(password|token|secret|key|credential|session|auth)'
 
-# Keychain アクセス属性
+# Keychain access attributes
 grep -rn --include='*.swift' --include='*.m' \
   -E 'kSecAttrAccessible' .
 
-# ログ出力の機密データ
+# Sensitive data in log output
 grep -rn --include='*.swift' \
   -E '(NSLog|os_log|print|debugPrint)\(.*' . | \
   grep -iE '(password|token|secret|key|credential|bearer)'
 
-# Data Protection クラス
+# Data Protection class
 grep -rn --include='*.swift' --include='*.m' \
   -E '(NSFileProtection|FileProtectionType)' .
 
-# クリップボード使用
+# Clipboard usage
 grep -rn --include='*.swift' \
   -E 'UIPasteboard\.general\.(string|setValue|setData)' .
 ```
 
-## MASVS-CRYPTO: 暗号
+## MASVS-CRYPTO: Cryptography
 
-### 検査対象
+### Inspection Targets
 
-- **弱いアルゴリズム**: MD5, SHA1（署名用途）, DES, 3DES, RC4
-- **CryptoKit / CommonCrypto**: 適切な使用
-- **鍵管理**: ハードコードされた暗号鍵、鍵導出関数の使用
-- **Secure Enclave**: 生体認証と組み合わせた鍵保護
-- **乱数生成**: `SecRandomCopyBytes` の使用（`arc4random` は暗号用途に不十分）
+- **Weak algorithms**: MD5, SHA1 (for signing), DES, 3DES, RC4
+- **CryptoKit / CommonCrypto**: Proper usage
+- **Key management**: Hardcoded cryptographic keys, use of key derivation functions
+- **Secure Enclave**: Key protection combined with biometric authentication
+- **Random number generation**: Use of `SecRandomCopyBytes` (`arc4random` is insufficient for cryptographic purposes)
 
 ```bash
-# 弱い暗号アルゴリズム
+# Weak cryptographic algorithms
 grep -rn --include='*.swift' --include='*.m' \
   -iE '(CC_MD5|CC_SHA1|kCCAlgorithmDES|kCCAlgorithm3DES|\.md5|\.sha1)' .
 
-# ハードコードされた暗号鍵
+# Hardcoded cryptographic keys
 grep -rn --include='*.swift' \
   -E '(let|var)\s+(key|secret|iv|nonce)\s*[:=]\s*"[^"]{8,}"' .
 
-# 乱数生成
+# Random number generation
 grep -rn --include='*.swift' --include='*.m' \
   -E '(arc4random|srand|rand\(\)|drand48)' .
 
-# Secure Enclave 使用確認
+# Secure Enclave usage check
 grep -rn --include='*.swift' \
   -E '(SecureEnclave|\.secureEnclave|kSecAttrTokenIDSecureEnclave)' .
 ```
 
-## MASVS-AUTH: 認証
+## MASVS-AUTH: Authentication
 
-### 検査対象
+### Inspection Targets
 
-- **Local Authentication**: Touch ID / Face ID の実装
-- **生体認証のフォールバック**: パスコードフォールバック時のセキュリティ
-- **LAContext**: `evaluatePolicy` の使用と `evaluatedPolicyDomainState` の検証
-- **トークン管理**: リフレッシュトークンの Keychain 保存
-- **セッション制御**: タイムアウト、バックグラウンド時の再認証
+- **Local Authentication**: Touch ID / Face ID implementation
+- **Biometric fallback**: Security when falling back to passcode
+- **LAContext**: Usage of `evaluatePolicy` and verification of `evaluatedPolicyDomainState`
+- **Token management**: Storing refresh tokens in Keychain
+- **Session control**: Timeout, re-authentication when returning from background
 
 ```bash
-# 生体認証実装
+# Biometric authentication implementation
 grep -rn --include='*.swift' \
   -E '(LAContext|canEvaluatePolicy|evaluatePolicy|biometryType)' .
 
-# 生体認証ポリシー（deviceOwnerAuthentication はパスコードフォールバックあり）
+# Biometric authentication policy (deviceOwnerAuthentication includes passcode fallback)
 grep -rn --include='*.swift' \
   -E '(deviceOwnerAuthenticationWithBiometrics|deviceOwnerAuthentication)' .
 
-# Keychain でのトークン保存
+# Token storage in Keychain
 grep -rn --include='*.swift' \
   -E '(SecItemAdd|SecItemUpdate|SecItemCopyMatching|SecItemDelete)' .
 ```
 
-## MASVS-NETWORK: ネットワーク
+## MASVS-NETWORK: Network
 
-### 検査対象
+### Inspection Targets
 
-- **ATS (App Transport Security)**: `NSAllowsArbitraryLoads` の無効化確認
-- **Certificate Pinning**: URLSession delegate または TrustKit の実装
-- **Cleartext 通信**: HTTP（非 HTTPS）エンドポイントの使用
-- **プロキシ検出**: 中間者攻撃への対策
+- **ATS (App Transport Security)**: Verify `NSAllowsArbitraryLoads` is disabled
+- **Certificate Pinning**: Implementation via URLSession delegate or TrustKit
+- **Cleartext communication**: Use of HTTP (non-HTTPS) endpoints
+- **Proxy detection**: Countermeasures against man-in-the-middle attacks
 
 ```bash
-# ATS 設定の確認
+# Check ATS configuration
 find . -name 'Info.plist' -not -path '*/Pods/*' -not -path '*/.build/*' \
   -exec grep -A 10 'NSAppTransportSecurity' {} +
 
-# NSAllowsArbitraryLoads（全 HTTP 許可 = 危険）
+# NSAllowsArbitraryLoads (allows all HTTP = dangerous)
 find . -name 'Info.plist' -not -path '*/Pods/*' \
   -exec grep -l 'NSAllowsArbitraryLoads.*true' {} \;
 
-# Certificate Pinning 実装
+# Certificate Pinning implementation
 grep -rn --include='*.swift' \
   -E '(urlSession.*didReceive.*challenge|SecTrustEvaluate|TrustKit|pinnedDomains)' .
 
-# HTTP URL の使用（cleartext）
+# HTTP URL usage (cleartext)
 grep -rn --include='*.swift' --include='*.m' \
   -E 'http://[^l][^o][^c][^a][^l]' . | grep -v '// '
 ```
 
-## MASVS-PLATFORM: プラットフォーム連携
+## MASVS-PLATFORM: Platform Interaction
 
-### 検査対象
+### Inspection Targets
 
-- **Universal Links**: `apple-app-site-association` の設定、入力検証
-- **Custom URL Schemes**: 未検証の URL パラメータ処理
-- **WebView**: `WKWebView` の JavaScript 設定、`file://` アクセス
-- **App Extensions**: データ共有のスコープ制限
-- **UIPasteboard**: アプリ間データ漏洩
-- **スクリーンショット防止**: `UITextField.isSecureTextEntry` の使用
+- **Universal Links**: `apple-app-site-association` configuration, input validation
+- **Custom URL Schemes**: Handling of unvalidated URL parameters
+- **WebView**: JavaScript settings in `WKWebView`, `file://` access
+- **App Extensions**: Scope restrictions for data sharing
+- **UIPasteboard**: Inter-app data leakage
+- **Screenshot prevention**: Use of `UITextField.isSecureTextEntry`
 
 ```bash
-# Universal Links / URL スキーム
+# Universal Links / URL Schemes
 grep -rn --include='*.swift' \
   -E '(application.*open.*url|userActivity.*webpageURL|NSUserActivity)' .
 
-# URL スキームの入力検証
+# URL Scheme input validation
 grep -rn --include='*.swift' \
   -E '(func\s+application.*open\s+url|UIApplication.*openURL)' .
 
-# WebView 設定
+# WebView configuration
 grep -rn --include='*.swift' \
   -E '(WKWebView|WKWebViewConfiguration|javaScriptEnabled|allowFileAccessFromFileURLs)' .
 
-# App Extensions のデータ共有
+# App Extensions data sharing
 grep -rn --include='*.swift' \
   -E '(UserDefaults\(suiteName|FileManager.*containerURL.*appGroupIdentifier)' .
 ```
 
-## MASVS-CODE: コード品質
+## MASVS-CODE: Code Quality
 
-### 検査対象
+### Inspection Targets
 
-- **コンパイラ保護**: PIE, Stack Canaries, ARC
-- **依存ライブラリ**: CocoaPods/SPM/Carthage の脆弱性
-- **デバッグコード**: `#if DEBUG` ガード外のデバッグ機能
-- **入力検証**: ディープリンク・IPC 経由の入力サニタイズ
+- **Compiler protections**: PIE, Stack Canaries, ARC
+- **Dependency libraries**: Vulnerabilities in CocoaPods/SPM/Carthage
+- **Debug code**: Debug functionality outside `#if DEBUG` guards
+- **Input validation**: Sanitization of input via deep links and IPC
 
 ```bash
-# デバッグコードの残存
+# Remaining debug code
 grep -rn --include='*.swift' \
   -E '(#if\s+DEBUG|debugPrint|assert\(|precondition\()' .
 
-# CocoaPods の脆弱性確認
+# CocoaPods vulnerability check
 [ -f Podfile.lock ] && pod audit 2>/dev/null
 
-# SPM 依存の確認
+# SPM dependency check
 find . -name 'Package.resolved' -exec cat {} \;
 ```
 
-## MASVS-RESILIENCE: 耐タンパー性
+## MASVS-RESILIENCE: Tamper Resistance
 
-### 検査対象
+### Inspection Targets
 
-- **Jailbreak 検出**: ファイルシステムチェック、Cydia URL スキーム
-- **デバッガ検出**: `ptrace`, `sysctl` による検出
-- **整合性チェック**: コード署名の検証
-- **リバースエンジニアリング対策**: 文字列の難読化
+- **Jailbreak detection**: File system checks, Cydia URL scheme
+- **Debugger detection**: Detection via `ptrace`, `sysctl`
+- **Integrity checks**: Code signature verification
+- **Anti-reverse-engineering**: String obfuscation
 
 ```bash
-# Jailbreak 検出の実装
+# Jailbreak detection implementation
 grep -rn --include='*.swift' --include='*.m' \
   -E '(cydia|/Applications/Cydia|/usr/sbin/sshd|/bin/bash|jailbreak|isJailbroken)' .
 
-# デバッガ検出
+# Debugger detection
 grep -rn --include='*.swift' --include='*.m' \
   -E '(ptrace|PT_DENY_ATTACH|sysctl|CTL_KERN|KERN_PROC)' .
 ```
 
-## MASVS-PRIVACY: プライバシー
+## MASVS-PRIVACY: Privacy
 
-### 検査対象
+### Inspection Targets
 
-- **ATT (App Tracking Transparency)**: `requestTrackingAuthorization` の実装
-- **Privacy Manifest**: `PrivacyInfo.xcprivacy` の存在と内容
-- **位置情報**: 使用目的の明示、精度の最小化
-- **カメラ・マイク**: 使用目的の明示
-- **データ最小化**: 必要最小限のデータ収集
+- **ATT (App Tracking Transparency)**: Implementation of `requestTrackingAuthorization`
+- **Privacy Manifest**: Existence and content of `PrivacyInfo.xcprivacy`
+- **Location data**: Clear purpose declaration, minimizing precision
+- **Camera and microphone**: Clear purpose declaration
+- **Data minimization**: Collecting only the minimum necessary data
 
 ```bash
-# ATT 実装
+# ATT implementation
 grep -rn --include='*.swift' \
   -E '(ATTrackingManager|requestTrackingAuthorization|trackingAuthorizationStatus)' .
 
 # Privacy Manifest
 find . -name 'PrivacyInfo.xcprivacy' -not -path '*/Pods/*'
 
-# 位置情報の使用
+# Location data usage
 grep -rn --include='*.swift' \
   -E '(CLLocationManager|requestWhenInUseAuthorization|requestAlwaysAuthorization)' .
 
-# Info.plist の使用目的記述
+# Purpose descriptions in Info.plist
 find . -name 'Info.plist' -not -path '*/Pods/*' \
   -exec grep -l 'NSLocationWhenInUseUsageDescription\|NSCameraUsageDescription\|NSMicrophoneUsageDescription' {} \;
 ```
 
-## iOS 検査チェックリスト
+## iOS Security Checklist
 
-- [ ] Keychain に適切なアクセス属性が設定されている
-- [ ] NSUserDefaults に機密データが保存されていない
-- [ ] ATS が有効で `NSAllowsArbitraryLoads` が false
-- [ ] Certificate Pinning が実装されている
-- [ ] 生体認証が Keychain ACL と連携している
-- [ ] WebView で不要な JavaScript が無効化されている
-- [ ] Universal Links の入力が検証されている
-- [ ] ログに機密データが出力されていない
-- [ ] バックグラウンド遷移時のスクリーンショットが保護されている
-- [ ] Privacy Manifest が存在し、正確である
-- [ ] 弱い暗号アルゴリズムが使用されていない
-- [ ] デバッグコードが本番ビルドに含まれていない
+- [ ] Appropriate access attributes are set for Keychain
+- [ ] No sensitive data is stored in NSUserDefaults
+- [ ] ATS is enabled and `NSAllowsArbitraryLoads` is false
+- [ ] Certificate Pinning is implemented
+- [ ] Biometric authentication is integrated with Keychain ACL
+- [ ] Unnecessary JavaScript is disabled in WebViews
+- [ ] Universal Links input is validated
+- [ ] No sensitive data is output in logs
+- [ ] Screenshots are protected during background transitions
+- [ ] Privacy Manifest exists and is accurate
+- [ ] No weak cryptographic algorithms are used
+- [ ] Debug code is not included in production builds
