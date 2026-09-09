@@ -1,0 +1,19 @@
+{
+  "name": "toshipon-security-audit",
+  "description": "Security audit plugins by toshipon: full-stack vulnerability assessment for Web, Mobile, Backend, IaC, Compliance and LLM/AI.",
+  "owner": {
+    "name": "toshipon",
+    "url": "https://github.com/toshipon"
+  },
+  "plugins": [
+    {
+      "name": "security-audit",
+      "source": "./plugins/security-audit",
+      "description": "Full-stack security audit for Web, Mobile, Backend, IaC, Compliance and LLM/AI: OWASP Top 10:2025, MASVS v2, CIS Benchmarks, PCI-DSS, GDPR. Static analysis plus CLI/SQL configuration checks and Chrome MCP dashboard inspection.",
+      "version": "1.5.0",
+      "author": {
+        "name": "toshipon"
+      }
+    }
+  ]
+}

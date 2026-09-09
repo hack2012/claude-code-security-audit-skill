@@ -23,19 +23,53 @@ A comprehensive, full-stack security audit skill for [Claude Code](https://claud
 
 ## Quick Start
 
-### Option 1: Git Submodule (recommended)
+### Option 1: Plugin Marketplace (recommended)
+
+Inside Claude Code:
+
+```
+/plugin marketplace add toshipon/claude-code-security-audit-skill
+/plugin install security-audit@toshipon-security-audit
+```
+
+The same thing from a shell:
+
+```bash
+claude plugin marketplace add toshipon/claude-code-security-audit-skill
+claude plugin install security-audit@toshipon-security-audit
+```
+
+The marketplace is named `toshipon-security-audit` (distinct from the companion
+[security-assessment](https://github.com/toshipon/claude-code-security-assessment-skill) marketplace `toshipon-security`,
+so both can be added side by side).
+
+### Option 2: Plain skill directory (still supported)
+
+The repository root keeps `SKILL.md` and `references/` as symlinks into
+`plugins/security-audit/skills/security-audit/`, so cloning the whole repository into
+`~/.claude/skills/security-audit` still registers `/security-audit`, and existing clones keep working after `git pull`.
+
+```bash
+git clone https://github.com/toshipon/claude-code-security-audit-skill.git ~/.claude/skills/security-audit
+```
+
+Or as a git submodule:
 
 ```bash
 cd ~/.claude
-git submodule add git@github.com:toshipon/claude-code-security-audit-skill.git skills/security-audit
+git submodule add https://github.com/toshipon/claude-code-security-audit-skill.git skills/security-audit
 ```
 
-### Option 2: Manual Copy
+On Windows, git checks out symlinks as plain text files unless `core.symlinks` is enabled, so use
+Option 1 there, or clone elsewhere and link only the skill directory:
 
 ```bash
-git clone git@github.com:toshipon/claude-code-security-audit-skill.git
-cp -r claude-code-security-audit-skill/ ~/.claude/skills/security-audit/
+git clone https://github.com/toshipon/claude-code-security-audit-skill.git ~/claude-code-security-audit-skill
+ln -s ~/claude-code-security-audit-skill/plugins/security-audit/skills/security-audit ~/.claude/skills/security-audit
 ```
+
+Pick one method. Installing both the plugin and the plain skill registers `/security-audit` twice
+(as `security-audit` and `security-audit:security-audit`).
 
 ### Usage
 
@@ -85,33 +119,42 @@ cp -r claude-code-security-audit-skill/ ~/.claude/skills/security-audit/
 ## Architecture
 
 ```
-security-audit/
-├── SKILL.md                              # Main skill (loaded into context)
-├── README.md                             # This file
-└── references/                           # Detailed guides (loaded on demand)
-    ├── nextjs-security.md                # Next.js: Server Actions, Middleware, CSP, CVEs
-    ├── vercel-security.md                # Vercel: CLI checks + Chrome MCP dashboard
-    ├── supabase-security.md              # Supabase: RLS SQL queries + Chrome MCP dashboard
-    ├── web-testing.md                    # General web: OWASP WSTG + Top 10:2025
-    ├── ios-testing.md                    # iOS: MASVS v2 all 8 categories
-    ├── android-security.md              # Android: MASVS v2 Kotlin/Java
-    ├── flutter-security.md              # Flutter: Dart security patterns
-    ├── react-native-security.md         # React Native: JS/TS + native bridge
-    ├── python-security.md               # Python: Django/FastAPI/Flask + Bandit
-    ├── go-security.md                   # Go: goroutine safety, crypto, HTTP
-    ├── rails-security.md                # Rails: Brakeman patterns
-    ├── rust-security.md                 # Rust: unsafe, FFI, memory safety
-    ├── terraform-security.md            # Terraform: AWS/GCP/Azure misconfigs
-    ├── aws-security.md                  # AWS: CIS Benchmark, Well-Architected
-    ├── gcp-security.md                  # GCP: CIS Benchmark, Security Command Center
-    ├── azure-security.md                # Azure: CIS Benchmark, Defender for Cloud
-    ├── compliance-financial.md          # PCI-DSS v4.0, HIPAA, SOX
-    ├── compliance-privacy.md            # GDPR, CCPA, SOC 2, ISO 27001
-    ├── supply-chain-security.md         # SBOM, dependency provenance, typosquatting
-    ├── container-security.md            # Dockerfile, Kubernetes RBAC, pod security
-    ├── cicd-security.md                 # GitHub Actions, GitLab CI, Vercel builds
-    ├── secret-scanning.md               # Git history, build artifacts, rotation
-    └── llm-security.md                  # OWASP Top 10 for LLM, MCP, RAG security
+claude-code-security-audit-skill/
+├── .claude-plugin/
+│   └── marketplace.json                  # Marketplace manifest (name: toshipon-security-audit)
+├── plugins/security-audit/
+│   ├── .claude-plugin/
+│   │   └── plugin.json                   # Plugin manifest (name: security-audit)
+│   └── skills/security-audit/
+│       ├── SKILL.md                      # Main skill (loaded into context)
+│       └── references/                   # Detailed guides (loaded on demand)
+│           ├── nextjs-security.md        # Next.js: Server Actions, Middleware, CSP, CVEs
+│           ├── vercel-security.md        # Vercel: CLI checks + Chrome MCP dashboard
+│           ├── supabase-security.md      # Supabase: RLS SQL queries + Chrome MCP dashboard
+│           ├── web-testing.md            # General web: OWASP WSTG + Top 10:2025
+│           ├── ios-testing.md            # iOS: MASVS v2 all 8 categories
+│           ├── android-security.md       # Android: MASVS v2 Kotlin/Java
+│           ├── flutter-security.md       # Flutter: Dart security patterns
+│           ├── react-native-security.md  # React Native: JS/TS + native bridge
+│           ├── python-security.md        # Python: Django/FastAPI/Flask + Bandit
+│           ├── go-security.md            # Go: goroutine safety, crypto, HTTP
+│           ├── rails-security.md         # Rails: Brakeman patterns
+│           ├── rust-security.md          # Rust: unsafe, FFI, memory safety
+│           ├── terraform-security.md     # Terraform: AWS/GCP/Azure misconfigs
+│           ├── aws-security.md           # AWS: CIS Benchmark, Well-Architected
+│           ├── gcp-security.md           # GCP: CIS Benchmark, Security Command Center
+│           ├── azure-security.md         # Azure: CIS Benchmark, Defender for Cloud
+│           ├── compliance-financial.md   # PCI-DSS v4.0, HIPAA, SOX
+│           ├── compliance-privacy.md     # GDPR, CCPA, SOC 2, ISO 27001
+│           ├── supply-chain-security.md  # SBOM, dependency provenance, typosquatting
+│           ├── container-security.md     # Dockerfile, Kubernetes RBAC, pod security
+│           ├── cicd-security.md          # GitHub Actions, GitLab CI, Vercel builds
+│           ├── secret-scanning.md        # Git history, build artifacts, rotation
+│           ├── llm-security.md           # OWASP Top 10 for LLM, MCP, RAG security
+│           └── best-practices-analysis.md # Cross-cutting best-practice review
+├── SKILL.md -> plugins/security-audit/skills/security-audit/SKILL.md      # symlink, keeps plain-clone installs working
+├── references -> plugins/security-audit/skills/security-audit/references  # symlink, same
+└── README.md                             # This file
 ```
 
 ### Design Principles
@@ -199,10 +242,12 @@ security-audit/
 
 PRs welcome! When adding a new reference:
 
-1. Create `references/<technology>-security.md`
+1. Create `plugins/security-audit/skills/security-audit/references/<technology>-security.md`
 2. Follow the existing format: detection patterns (grep/bash), Chrome MCP steps, common misconfigs table, checklist
-3. Add the technology to the relevant phase in `SKILL.md`
+3. Add the technology to the relevant phase in `plugins/security-audit/skills/security-audit/SKILL.md`
 4. Update this README's roadmap
+5. Bump `version` in `plugins/security-audit/.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
+6. Run `claude plugin validate .` and `claude plugin validate plugins/security-audit`
 
 ## License
 
