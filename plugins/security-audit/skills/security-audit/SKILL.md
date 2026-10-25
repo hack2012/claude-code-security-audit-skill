@@ -81,12 +81,18 @@ Chrome MCP tools (`mcp__chrome-devtools__*`) are **only available in the main co
 
 ### Report Generation
 
-When findings exceed **10 items** or span **3+ layers**, pause and ask the user:
+Count all findings, including Unscored and N/A. When findings exceed **10 items** or span **3+ layers**, pause and ask the user:
 
-> "Found X findings (Critical: N / High: N / Medium: N / Low: N). Would you like to generate a report file?"
+> "Found X findings (CVSS severity: Critical: N / High: N / Medium: N / Low: N / None: N; Unscored: N / N/A: N). Would you like to generate a report file?"
 
 - **Yes**: Generate `security-audit-report-YYYY-MM-DD.md` in the project root
 - **No**: Continue with inline summary only
+
+### CVSS v4.0 Severity Assessment
+
+Read `references/cvss-scoring.md` before assigning severity. Assess every code/config and dashboard finding for CVSS applicability. For vulnerabilities, default to CVSS-B and justify all 11 Base metrics; calculate with the FIRST v4.0 calculator or a verified v4.0 implementation. Record the exact vector, numeric score, severity, metric-group label, calculation source, and date. Never estimate scores or use X for unknown Base metrics.
+
+Use **Unscored** with missing evidence or calculation details when scoring is incomplete, and **N/A** with a reason for non-vulnerability compliance or hardening recommendations. Keep remediation priority and evidence confidence separate from CVSS severity and existing check priorities. Contextual scores must be labeled CVSS-BT, CVSS-BE, or CVSS-BTE; Supplemental metrics do not change the score. Include None, Unscored, and N/A in report summaries.
 
 ### Chrome MCP Dashboard Findings
 
@@ -100,7 +106,9 @@ Dashboard settings found via Chrome MCP **cannot be fixed by CLI or code changes
 Example format in report:
 
 ```markdown
-### [HIGH-003] Vercel Deployment Protection Disabled
+### [UNSCORED-003] Vercel Deployment Protection Disabled
+- **CVSS Applicability**: Unscored — exposed preview content and its impact have not been established.
+- **Remediation Priority / Confidence**: High — review preview exposure promptly / High — setting observed directly.
 - **Current Value**: Deployment Protection = OFF
 - **Recommended Value**: Deployment Protection = Vercel Authentication
 - **Manual Remediation Steps**:
@@ -144,6 +152,17 @@ Example format in report:
 /security-audit llm          -> LLM/AI security (OWASP Top 10 for LLM)
 /security-audit advanced     -> All advanced detection
 ```
+
+## Additional Workflow Routing
+
+Before target selection, route these explicit workflow requests to `references/advanced-workflows.md`:
+
+- `/security-audit custom [options]`: run trusted local JSON detection rules with the Python helper's `scan` command.
+- `/security-audit scanner [options]`: import existing Semgrep or CodeQL SARIF with `import-sarif`; report unavailable scanners as **Not Run**.
+- `/security-audit monitor [options]`: compare compatible findings snapshots with `monitor`; do not create schedules or update baselines automatically.
+- `/security-audit fix [options]`: only when the user requests remediation, prepare evidence-backed edits and validate a patch with `check-patch`, then follow the review and authorization workflow in the guide.
+
+These are agent instructions, not standalone shell commands. Resolve `scripts/audit_workflow.py` relative to this skill directory; it requires Python 3.10+ and uses only the standard library. Preserve coverage limitations and `Unscored` status in the audit report. Scanner levels are not CVSS severity. An audit request alone does not authorize remediation or publication.
 
 ## Phase 1: Reconnaissance
 
@@ -300,35 +319,50 @@ Evaluate threats that span multiple layers.
 **Scope**: [selected targets]
 
 ## Executive Summary
-- Critical: X / High: Y / Medium: Z / Low: W
+- CVSS severity: Critical: X / High: Y / Medium: Z / Low: W / None: N
+- Assessment status: Unscored: U / N/A: A
 - Top priority: [one-line summary]
 
 ## Layer Summary
-| Layer        | Critical | High | Medium | Low |
-|--------------|----------|------|--------|-----|
-| Web App      | X | X | X | X |
-| Infrastructure | X | X | X | X |
-| Backend      | X | X | X | X |
-| Mobile       | X | X | X | X |
-| Compliance   | X | X | X | X |
-| Advanced     | X | X | X | X |
-| Cross-Layer  | X | X | X | X |
+| Layer | Critical | High | Medium | Low | None | Unscored | N/A |
+|-------|----------|------|--------|-----|------|----------|-----|
+| Web App | X | X | X | X | X | X | X |
+| Infrastructure | X | X | X | X | X | X | X |
+| Backend | X | X | X | X | X | X | X |
+| Mobile | X | X | X | X | X | X | X |
+| Compliance | X | X | X | X | X | X | X |
+| Advanced | X | X | X | X | X | X | X |
+| Cross-Layer | X | X | X | X | X | X | X |
+
+Count code/config and dashboard findings once each. Severity columns count calculated results; Unscored and N/A are separate assessment states. Finding ID severity labels must match the calculated result; use [UNSCORED-XXX] or [NA-XXX] when applicable.
 
 ## Findings
 
 ### Code/Config Findings
-### [CRITICAL-001] [vulnerability title]
+### [SEVERITY-001] [vulnerability title]
 - **Layer**: [Web / Infrastructure / Backend / Mobile / Compliance / Advanced / Cross-layer]
 - **Category**: OWASP [A01/MASVS-STORAGE/CIS/PCI-DSS/etc.]
 - **Location**: `file_path:line_number`
+- **CVSS Applicability**: [Scored / Unscored / N/A, with reason; missing evidence or calculator access if Unscored]
+- **CVSS**: [CVSS-B score and severity; exact CVSS:4.0 vector; or Unscored / N/A]
+- **Metric Evidence**: [AV, AC, AT, PR, UI, VC, VI, VA, SC, SI, SA: selected value and rationale for each; identify unknowns if Unscored]
+- **Calculation Source / Date**: [FIRST calculator URL or verified implementation/version and verification reference; YYYY-MM-DD; or reason unavailable/not applicable]
+- **Contextual CVSS**: [Optional CVSS-BT / CVSS-BE / CVSS-BTE score, vector, added metric evidence and date]
+- **Remediation Priority / Confidence**: [priority and reason / evidence confidence and reason]
 - **Description**: What the vulnerability is
 - **Impact**: What happens if exploited
 - **Remediation**: diff-format code fix
 
 ### Dashboard Findings (Manual Remediation Required)
-### [HIGH-XXX] [dashboard setting title]
+### [SEVERITY-XXX] [dashboard setting title]
 - **Layer**: [Vercel / Supabase / AWS Console / GCP Console / Azure Portal]
 - **Category**: [Configuration / Access Control / Encryption / etc.]
+- **CVSS Applicability**: [Scored / Unscored / N/A, with reason; missing evidence or calculator access if Unscored]
+- **CVSS**: [CVSS-B score and severity; exact CVSS:4.0 vector; or Unscored / N/A]
+- **Metric Evidence**: [AV, AC, AT, PR, UI, VC, VI, VA, SC, SI, SA: selected value and rationale for each; identify unknowns if Unscored]
+- **Calculation Source / Date**: [FIRST calculator URL or verified implementation/version and verification reference; YYYY-MM-DD; or reason unavailable/not applicable]
+- **Contextual CVSS**: [Optional CVSS-BT / CVSS-BE / CVSS-BTE score, vector, added metric evidence and date]
+- **Remediation Priority / Confidence**: [priority and reason / evidence confidence and reason]
 - **Current Value**: [value observed via Chrome MCP]
 - **Recommended Value**: [security-recommended value]
 - **Manual Remediation Steps**:

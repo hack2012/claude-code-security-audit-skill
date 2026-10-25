@@ -45,7 +45,7 @@ so both can be added side by side).
 
 ### Option 2: Plain skill directory (still supported)
 
-The repository root keeps `SKILL.md` and `references/` as symlinks into
+The repository root keeps `SKILL.md`, `references/`, and `scripts/` as symlinks into
 `plugins/security-audit/skills/security-audit/`, so cloning the whole repository into
 `~/.claude/skills/security-audit` still registers `/security-audit`, and existing clones keep working after `git pull`.
 
@@ -127,7 +127,11 @@ claude-code-security-audit-skill/
 │   │   └── plugin.json                   # Plugin manifest (name: security-audit)
 │   └── skills/security-audit/
 │       ├── SKILL.md                      # Main skill (loaded into context)
+│       ├── scripts/
+│       │   └── audit_workflow.py          # Local rules, SARIF import, snapshots, patch validation
 │       └── references/                   # Detailed guides (loaded on demand)
+│           ├── cvss-scoring.md           # CVSS v4.0 evidence, calculation, and reporting workflow
+│           ├── advanced-workflows.md     # Initial v2.0 CLI and remediation workflows
 │           ├── nextjs-security.md        # Next.js: Server Actions, Middleware, CSP, CVEs
 │           ├── vercel-security.md        # Vercel: CLI checks + Chrome MCP dashboard
 │           ├── supabase-security.md      # Supabase: RLS SQL queries + Chrome MCP dashboard
@@ -154,6 +158,8 @@ claude-code-security-audit-skill/
 │           └── best-practices-analysis.md # Cross-cutting best-practice review
 ├── SKILL.md -> plugins/security-audit/skills/security-audit/SKILL.md      # symlink, keeps plain-clone installs working
 ├── references -> plugins/security-audit/skills/security-audit/references  # symlink, same
+├── scripts -> plugins/security-audit/skills/security-audit/scripts        # symlink, same
+├── tests/test_audit_workflow.py           # Disposable-project CLI regression tests
 └── README.md                             # This file
 ```
 
@@ -218,15 +224,37 @@ claude-code-security-audit-skill/
 - [x] Secret scanning (git history, build artifacts)
 - [x] LLM/AI security (OWASP Top 10 for LLM)
 
-### v2.0 — Next Generation (Planned)
+### v2.0 — Next Generation (In Progress)
 - [ ] Auto-fix mode (generate PRs with remediation)
-- [ ] Severity scoring with CVSS v4.0
+- [x] Severity scoring with CVSS v4.0 (available in this revision)
 - [ ] Custom rule engine (user-defined detection patterns)
 - [ ] Integration with external scanners (Semgrep, CodeQL)
 - [ ] Continuous monitoring mode (watch for new vulnerabilities)
 
+CVSS support is an instruction-based assessment and reporting workflow, not a bundled scoring engine. It requires the FIRST CVSS v4.0 calculator or a verified v4.0 implementation, records metric evidence and calculation sources, and explicitly reports Unscored and N/A findings. See [the scoring guide](plugins/security-audit/skills/security-audit/references/cvss-scoring.md).
+
+### Initial v2.0 workflow support (v1.7.0)
+
+All four remaining items have initial support; their roadmap checkboxes remain open because the broader capabilities are still in progress:
+
+| Item | Available now | Remaining scope |
+|------|---------------|-----------------|
+| Auto-fix PRs | Evidence-based remediation workflow and read-only patch validation | End-to-end automated remediation and PR generation |
+| Custom rule engine | Trusted local JSON regex rules with bounded UTF-8 file scanning | Richer language-aware rules and sandboxed untrusted patterns |
+| External scanners | Semgrep / CodeQL SARIF 2.1.0 import | Scanner lifecycle management and broader SARIF coverage |
+| Continuous monitoring | Compatible snapshot comparison and optional failure on new findings | Persistent monitoring and scheduler integration |
+
+Use `/security-audit custom`, `scanner`, `monitor`, or `fix` to request these agent workflows. The bundled Python 3.10+ helper prints JSON to stdout and does not install scanners, apply patches, create PRs, register schedules, or update baselines. See [workflow commands, limitations, and authorization](plugins/security-audit/skills/security-audit/references/advanced-workflows.md).
+
+From a repository checkout, run the helper tests with:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
 ## References
 
+- [FIRST CVSS v4.0](https://www.first.org/cvss/v4.0/specification-document)
 - [OWASP Top 10:2025](https://owasp.org/Top10/)
 - [OWASP WSTG](https://owasp.org/www-project-web-security-testing-guide/)
 - [OWASP MASVS v2](https://mas.owasp.org/MASVS/)
