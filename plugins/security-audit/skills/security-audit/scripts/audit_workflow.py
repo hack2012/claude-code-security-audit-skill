@@ -4,10 +4,15 @@ import argparse
 import fnmatch
 import hashlib
 import json
+import math
+import multiprocessing
 import os
 import re
+import signal
 import subprocess
 import sys
+import tempfile
+import time
 from pathlib import Path
 from urllib.parse import unquote, urljoin, urlparse
 
@@ -86,7 +91,7 @@ def finding(source, rule, path, line, message, level):
     }
 
 
-def scan(args):
+def scan_work(args):
     root = root_dir(args.root)
     config = read_json(args.rules)
     require(
@@ -187,6 +192,56 @@ def scan(args):
         },
         "findings": sorted(findings, key=lambda f: f["fingerprint"]),
     }
+
+
+def scan_worker(root, rules, output):
+    """Keep regex evaluation and accumulated findings outside the CLI process."""
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        result = {"result": scan_work(argparse.Namespace(root=root, rules=rules))}
+    except WorkflowError as error:
+        result = {"error": str(error)}
+    except Exception:  # noqa: BLE001 - suppress worker tracebacks and source leakage
+        result = {"error": "Invalid scan input or worker error"}
+    try:
+        Path(output).write_text(json.dumps(result, ensure_ascii=True), encoding="utf-8")
+    except BaseException:  # noqa: BLE001 - never emit a worker traceback
+        os._exit(2)
+
+
+def scan(args):
+    timeout = getattr(args, "timeout", 30.0)
+    started = time.monotonic()
+    with tempfile.TemporaryDirectory(prefix="audit-scan-") as directory:
+        output = str(Path(directory) / "result.json")
+        process = multiprocessing.get_context("spawn").Process(
+            target=scan_worker, args=(args.root, args.rules, output)
+        )
+        try:
+            process.start()
+            while process.is_alive():
+                remaining = timeout - (time.monotonic() - started)
+                require(remaining > 0, "Scan timeout exceeded")
+                process.join(min(remaining, 60.0))
+            require(time.monotonic() - started <= timeout, "Scan timeout exceeded")
+            require(
+                process.exitcode == 0 and Path(output).is_file(), "Scan worker failed"
+            )
+            result = read_json(output)
+            require(isinstance(result, dict), "Invalid scan worker result")
+            if "error" in result:
+                raise WorkflowError(result["error"])
+            require(set(result) == {"result"}, "Invalid scan worker result")
+            return result["result"]
+        finally:
+            if process.pid is not None:
+                if process.is_alive():
+                    process.terminate()
+                    process.join(0)
+                if process.is_alive():
+                    process.kill()
+                process.join()
+                process.close()
 
 
 def artifact_uri(location, artifacts, bases, root, visiting=None):
@@ -371,8 +426,7 @@ def sarif(args):
     }
 
 
-def snapshot(path):
-    data = read_json(path)
+def validate_snapshot(data):
     require(
         isinstance(data, dict)
         and set(data) == {"schema_version", "coverage", "findings"}
@@ -457,9 +511,9 @@ def snapshot(path):
     return coverage, entries
 
 
-def monitor(args):
-    coverage, baseline = snapshot(args.baseline)
-    current_coverage, current = snapshot(args.current)
+def compare_snapshots(baseline_snapshot, current_snapshot):
+    coverage, baseline = baseline_snapshot
+    current_coverage, current = current_snapshot
     require(coverage == current_coverage, "Snapshot coverage differs")
     return {
         "schema_version": 1,
@@ -468,6 +522,63 @@ def monitor(args):
         "resolved": [baseline[k] for k in sorted(baseline.keys() - current.keys())],
         "unchanged": [current[k] for k in sorted(current.keys() & baseline.keys())],
     }
+
+
+def snapshot(path):
+    return validate_snapshot(read_json(path))
+
+
+def monitor(args):
+    return compare_snapshots(snapshot(args.baseline), snapshot(args.current))
+
+
+def watch(args):
+    baseline = snapshot(args.baseline)
+    expected = {
+        "kind": "custom",
+        "root": str(root_dir(args.root)),
+        "rules_digest": digest(read_json(args.rules)),
+    }
+    require(baseline[0] == expected, "Snapshot coverage differs")
+    iteration = 0
+    while args.iterations == 0 or iteration < args.iterations:
+        current = scan(
+            argparse.Namespace(
+                root=args.root, rules=args.rules, timeout=args.scan_timeout
+            )
+        )
+        event = compare_snapshots(baseline, validate_snapshot(current))
+        iteration += 1
+        event["iteration"] = iteration
+        print(json.dumps(event, sort_keys=True, ensure_ascii=True), flush=True)
+        if args.fail_on_new and event["new"]:
+            return 1
+        if args.iterations and iteration >= args.iterations:
+            return 0
+        deadline = time.monotonic() + args.interval
+        while time.monotonic() < deadline:
+            time.sleep(min(60.0, max(0.0, deadline - time.monotonic())))
+    return 0
+
+
+def positive_seconds(value):
+    try:
+        result = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("Expected finite positive seconds") from None
+    if not math.isfinite(result) or result <= 0:
+        raise argparse.ArgumentTypeError("Expected finite positive seconds")
+    return result
+
+
+def nonnegative_integer(value):
+    try:
+        result = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("Expected a nonnegative integer") from None
+    if result < 0:
+        raise argparse.ArgumentTypeError("Expected a nonnegative integer")
+    return result
 
 
 def check_patch(args):
@@ -506,18 +617,32 @@ def main():
             ],
             required=True,
         )
+        if name == "scan":
+            command.add_argument("--timeout", type=positive_seconds, default=30.0)
+    command = commands.add_parser("watch")
+    command.add_argument("--root", required=True)
+    command.add_argument("--rules", required=True)
+    command.add_argument("--baseline", required=True)
+    command.add_argument("--interval", type=positive_seconds, default=30.0)
+    command.add_argument("--iterations", type=nonnegative_integer, default=0)
+    command.add_argument("--scan-timeout", type=positive_seconds, default=30.0)
+    command.add_argument("--fail-on-new", action="store_true")
     command = commands.add_parser("monitor")
     command.add_argument("--baseline", required=True)
     command.add_argument("--current", required=True)
     command.add_argument("--fail-on-new", action="store_true")
     args = parser.parse_args()
     try:
+        if args.command == "watch":
+            return watch(args)
         result = {
             "scan": scan,
             "import-sarif": sarif,
             "monitor": monitor,
             "check-patch": check_patch,
         }[args.command](args)
+    except KeyboardInterrupt:
+        return 130
     except WorkflowError as error:
         print("Audit workflow failed: " + str(error) + ".", file=sys.stderr)
         return 2

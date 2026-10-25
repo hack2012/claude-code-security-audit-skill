@@ -227,24 +227,24 @@ claude-code-security-audit-skill/
 ### v2.0 — Next Generation (In Progress)
 - [ ] Auto-fix mode (generate PRs with remediation)
 - [x] Severity scoring with CVSS v4.0 (available in this revision)
-- [ ] Custom rule engine (user-defined detection patterns)
+- [x] Custom rule engine (trusted user-defined JSON regex patterns, with execution deadlines)
 - [ ] Integration with external scanners (Semgrep, CodeQL)
-- [ ] Continuous monitoring mode (watch for new vulnerabilities)
+- [x] Continuous monitoring mode (local custom-rule polling with a fixed baseline)
 
 CVSS support is an instruction-based assessment and reporting workflow, not a bundled scoring engine. It requires the FIRST CVSS v4.0 calculator or a verified v4.0 implementation, records metric evidence and calculation sources, and explicitly reports Unscored and N/A findings. See [the scoring guide](plugins/security-audit/skills/security-audit/references/cvss-scoring.md).
 
-### Initial v2.0 workflow support (v1.7.0)
+### v2.0 workflow support (v1.8.0)
 
-All four remaining items have initial support; their roadmap checkboxes remain open because the broader capabilities are still in progress:
+Custom rules and local continuous monitoring are available. Auto-fix PRs and external scanner integration still have initial support; their broader automation remains in progress:
 
 | Item | Available now | Remaining scope |
 |------|---------------|-----------------|
 | Auto-fix PRs | Evidence-based remediation workflow and read-only patch validation | End-to-end automated remediation and PR generation |
-| Custom rule engine | Trusted local JSON regex rules with bounded UTF-8 file scanning | Richer language-aware rules and sandboxed untrusted patterns |
+| Custom rule engine | Trusted local JSON regex rules with bounded UTF-8 file scanning and process execution deadlines | Optional language-aware rules; no sandbox or memory quota for untrusted patterns |
 | External scanners | Semgrep / CodeQL SARIF 2.1.0 import | Scanner lifecycle management and broader SARIF coverage |
-| Continuous monitoring | Compatible snapshot comparison and optional failure on new findings | Persistent monitoring and scheduler integration |
+| Continuous monitoring | Compatible snapshot comparison and local polling watch, with optional failure on new findings | Optional scanner-backed monitoring, advisory feeds, and external scheduling |
 
-Use `/security-audit custom`, `scanner`, `monitor`, or `fix` to request these agent workflows. The bundled Python 3.10+ helper prints JSON to stdout and does not install scanners, apply patches, create PRs, register schedules, or update baselines. See [workflow commands, limitations, and authorization](plugins/security-audit/skills/security-audit/references/advanced-workflows.md).
+Use `/security-audit custom`, `scanner`, `monitor`, `watch`, or `fix` to request these agent workflows. The bundled Python 3.10+ helper prints JSON (NDJSON for `watch`) to stdout and does not install scanners, apply patches, create PRs, register schedules, or update baselines. See [workflow commands, limitations, and authorization](plugins/security-audit/skills/security-audit/references/advanced-workflows.md).
 
 From a repository checkout, run the helper tests with:
 

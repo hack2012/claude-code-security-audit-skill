@@ -160,6 +160,7 @@ Before target selection, route these explicit workflow requests to `references/a
 - `/security-audit custom [options]`: run trusted local JSON detection rules with the Python helper's `scan` command.
 - `/security-audit scanner [options]`: import existing Semgrep or CodeQL SARIF with `import-sarif`; report unavailable scanners as **Not Run**.
 - `/security-audit monitor [options]`: compare compatible findings snapshots with `monitor`; do not create schedules or update baselines automatically.
+- `/security-audit watch [options]`: on an explicit monitoring request, repeatedly run local custom rules against a fixed baseline with `watch`; choose a bounded `--iterations` count for verification and stop on scan errors. Do not register a service or replace the baseline.
 - `/security-audit fix [options]`: only when the user requests remediation, prepare evidence-backed edits and validate a patch with `check-patch`, then follow the review and authorization workflow in the guide.
 
 These are agent instructions, not standalone shell commands. Resolve `scripts/audit_workflow.py` relative to this skill directory; it requires Python 3.10+ and uses only the standard library. Preserve coverage limitations and `Unscored` status in the audit report. Scanner levels are not CVSS severity. An audit request alone does not authorize remediation or publication.

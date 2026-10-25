@@ -2,7 +2,7 @@
 
 Initial v2.0 workflows extend the existing audit without replacing evidence review or CVSS assessment. The helper requires Python 3.10+ and the standard library. It runs locally and does not execute commands supplied in rules or SARIF.
 
-Resolve `scripts/audit_workflow.py` relative to the installed skill directory. The examples below run from this repository's root; when installed, substitute that resolved path. Keep output files outside the scanned root so later scans do not scan their own artifacts. JSON is printed to stdout; diagnostics go to stderr. Exit status is 0 on success, 2 on invalid input or tool failure, and 1 only when `monitor --fail-on-new` detects new findings. Do not consume or adopt output after a failed command.
+Resolve `scripts/audit_workflow.py` relative to the installed skill directory. The examples below run from this repository's root; when installed, substitute that resolved path. Keep output files outside the scanned root so later scans do not scan their own artifacts. JSON is printed to stdout; diagnostics go to stderr. Exit status is 0 on success, 2 on invalid input or tool failure, 1 when `monitor` or `watch --fail-on-new` detects new findings, and 130 on interruption. A watch stream may contain completed events before a later failure; the failed scan itself emits no event or resolution. Do not adopt an incomplete scan as a snapshot.
 
 ## Custom Rules
 
@@ -27,7 +27,7 @@ python3 plugins/security-audit/skills/security-audit/scripts/audit_workflow.py s
   --root /path/to/project --rules /tmp/audit-rules.json > /tmp/current-findings.json
 ```
 
-Levels are `error`, `warning`, `note`, or `none`; they are scanner metadata, not CVSS severity. A regex match is a review candidate, not proof of exploitability. Rules are Python regexes evaluated against each included file; matches are reported by their starting line, with at most one finding per rule per line. This is text matching, without data-flow analysis. Use trusted, reviewed patterns only: Python regex has no execution timeout, and a pathological pattern can stall a scan. The 1 MiB per-file limit does not prevent regex denial of service.
+Levels are `error`, `warning`, `note`, or `none`; they are scanner metadata, not CVSS severity. A regex match is a review candidate, not proof of exploitability. Rules are Python regexes evaluated against each included file; matches are reported by their starting line, with at most one finding per rule per line. This is text matching, without data-flow analysis. Use trusted, reviewed patterns only. Each scan runs in a child process with a 30-second execution deadline, including worker startup and execution. Use `scan --timeout SECONDS` to change it. On timeout or interruption the worker is stopped and reaped, its temporary result is removed, and no partial snapshot is printed. This deadline bounds a pathological regex's runtime; it is not a memory quota or a sandbox for untrusted configuration. Result loading and serialization after the worker exits are outside the execution deadline.
 
 The helper skips symlinks and `.git`. Included files must be UTF-8 and no larger than 1 MiB; unsupported included files fail the scan rather than silently becoming clean. It does not emit matched source snippets. Rule IDs, messages, paths, and metadata can still be sensitive; do not embed credentials or source values in configuration, and review artifacts before sharing them.
 
@@ -75,6 +75,23 @@ python3 plugins/security-audit/skills/security-audit/scripts/audit_workflow.py m
 The comparison reports `new`, `unchanged`, and `resolved` findings. A resolved entry means absent from a compatible completed scan, not proven remediated. Investigate source changes and false negatives. Failed or skipped checks do not establish resolution; incompatible recorded coverage stops comparison. Custom coverage records the root and rule configuration digest. SARIF coverage records the root, tool names, and a digest of driver, extension, automation, and run-aggregation metadata, independent of run order. Empty runs and missing results are rejected. The operator must additionally verify identical file scope and a complete successful scan: matching metadata cannot prove that every file or rule executed, and the importer cannot infer omitted checks from a SARIF file. Fingerprints include location information, so moving a finding can appear as a new finding and an absent previous finding.
 
 This command performs one comparison. It neither watches files nor registers a recurring job. Do not automatically replace the baseline: review the delta and obtain the user's intended baseline choice. Persistent external scheduling requires a separate explicit request.
+
+### Local Continuous Watch
+
+For an explicitly requested ongoing local custom-rule scan, use `watch`:
+
+```bash
+python3 plugins/security-audit/skills/security-audit/scripts/audit_workflow.py watch \
+  --root /path/to/project --rules /tmp/audit-rules.json \
+  --baseline /tmp/baseline-findings.json --interval 30 --scan-timeout 30 \
+  > /tmp/audit-events.ndjson
+```
+
+The first scan starts immediately. After each successful scan, the command waits `--interval` seconds before starting the next. Both time values must be finite and positive. `--iterations N` limits the run to N successful scans; the default `0` repeats until stopped. `--fail-on-new` prints the first event containing new findings and exits with status 1. Ctrl+C exits with status 130 and stops any active scan worker.
+
+Each flushed NDJSON line contains `schema_version`, `iteration`, `coverage`, `new`, `unchanged`, and `resolved`. The baseline is validated and loaded once before monitoring, then kept fixed in memory. Every scan is compared with that original baseline, so a newly detected finding remains new on subsequent iterations. Neither baseline updates nor output files are managed automatically. A changed rule digest, changed coverage, failed scan, or timeout stops the run with status 2 without emitting a success event for that iteration.
+
+This mode polls custom-rule findings in local files. It does not execute external scanners, poll CVE feeds, register a system service, or survive termination of the process. Scanner-backed monitoring and persistent external scheduling remain separate follow-up work.
 
 ## Remediation and PR Workflow
 

@@ -1,9 +1,13 @@
 """Exercise the public CLI in disposable projects; no installed scanners required."""
 
 import json
+import queue
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -377,6 +381,214 @@ class WorkflowTests(unittest.TestCase):
         self.cli("scan", "--root", self.home / "missing", "--rules", self.rules, code=2)
         self.rules.write_text("{bad-json")
         self.scan(code=2)
+
+    def test_scan_timeout_stops_pathological_regex_without_partial_results(self):
+        rules = json.loads(self.rules.read_text())
+        rules["rules"][0]["pattern"] = "(a+)+$"
+        self.rules.write_text(json.dumps(rules))
+        (self.root / "app.py").write_text("a" * 200 + "!SECRET_CANARY_8379")
+        started = time.monotonic()
+        result = self.cli(
+            "scan",
+            "--root",
+            self.root,
+            "--rules",
+            self.rules,
+            "--timeout",
+            "0.3",
+            code=2,
+        )
+        self.assertLess(time.monotonic() - started, 6)
+        self.assertIn("timeout", result.stderr.lower())
+        self.assertNotIn("SECRET_CANARY_8379", result.stderr)
+
+    def watch_command(self, baseline, *extra):
+        return [
+            sys.executable,
+            str(SCRIPT),
+            "watch",
+            "--root",
+            str(self.root),
+            "--rules",
+            str(self.rules),
+            "--baseline",
+            str(baseline),
+            *extra,
+        ]
+
+    def start_watch(self, baseline, *extra):
+        process = subprocess.Popen(
+            self.watch_command(baseline, *extra),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        def cleanup():
+            if process.poll() is None:
+                process.kill()
+            process.communicate(timeout=5)
+
+        self.addCleanup(cleanup)
+        return process
+
+    def first_event(self, process):
+        lines = queue.Queue()
+        reader = threading.Thread(
+            target=lambda: lines.put(process.stdout.readline()), daemon=True
+        )
+        reader.start()
+        line = lines.get(timeout=10)
+        self.assertTrue(line, "watch exited before producing a completed scan")
+        return json.loads(line)
+
+    def test_watch_reports_new_findings_without_advancing_baseline(self):
+        (self.root / "app.py").write_text("eval('existing')\n")
+        baseline = self.write_json("baseline.json", self.scan())
+        original = baseline.read_bytes()
+        process = self.start_watch(baseline, "--interval", "0.3", "--iterations", "2")
+        first = self.first_event(process)
+        self.assertEqual(first["iteration"], 1)
+        self.assertEqual(first["new"], [])
+        self.assertEqual(len(first["unchanged"]), 1)
+        (self.root / "new.py").write_text("eval('new')\n")
+        stdout, stderr = process.communicate(timeout=10)
+        self.assertEqual(process.returncode, 0, stderr)
+        (second,) = [json.loads(line) for line in stdout.splitlines()]
+        self.assertEqual(second["iteration"], 2)
+        self.assertEqual([f["path"] for f in second["new"]], ["new.py"])
+        self.assertEqual(baseline.read_bytes(), original)
+
+    def test_watch_fail_on_new_returns_one_complete_event(self):
+        baseline = self.write_json("baseline.json", self.scan())
+        (self.root / "new.py").write_text("eval('new')\n")
+        result = subprocess.run(
+            self.watch_command(baseline, "--fail-on-new"),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        (event,) = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual(len(event["new"]), 1)
+
+    def test_watch_failed_scan_does_not_emit_false_resolution(self):
+        (self.root / "app.py").write_text("eval('existing')\n")
+        baseline = self.write_json("baseline.json", self.scan())
+        process = self.start_watch(baseline, "--interval", "0.3", "--iterations", "2")
+        self.first_event(process)
+        (self.root / "app.py").write_bytes(b"\xff")
+        stdout, stderr = process.communicate(timeout=10)
+        self.assertEqual(process.returncode, 2, stderr)
+        self.assertEqual(stdout, "")
+        self.assertNotIn("Traceback", stderr)
+
+    def test_watch_stops_if_rules_change(self):
+        baseline = self.write_json("baseline.json", self.scan())
+        process = self.start_watch(baseline, "--interval", "0.3", "--iterations", "2")
+        self.first_event(process)
+        rules = json.loads(self.rules.read_text())
+        rules["rules"][0]["pattern"] = "different-pattern"
+        self.rules.write_text(json.dumps(rules))
+        stdout, stderr = process.communicate(timeout=10)
+        self.assertEqual(process.returncode, 2, stderr)
+        self.assertEqual(stdout, "")
+
+    def test_watch_rejects_invalid_timing_and_counts(self):
+        baseline = self.write_json("baseline.json", self.scan())
+        for option, value in (
+            ("--interval", "0"),
+            ("--interval", "nan"),
+            ("--interval", "inf"),
+            ("--iterations", "-1"),
+            ("--scan-timeout", "-1"),
+            ("--scan-timeout", "nan"),
+        ):
+            with self.subTest(option=option, value=value):
+                result = subprocess.run(
+                    self.watch_command(baseline, option, value),
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=10,
+                )
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual(result.stdout, "")
+
+    def test_watch_interrupt_exits_without_traceback(self):
+        baseline = self.write_json("baseline.json", self.scan())
+        process = self.start_watch(baseline, "--interval", "30")
+        self.first_event(process)
+        process.send_signal(signal.SIGINT)
+        stdout, stderr = process.communicate(timeout=5)
+        self.assertEqual(process.returncode, 130, stderr)
+        self.assertEqual(stdout, "")
+        self.assertNotIn("Traceback", stderr)
+
+    def test_watch_uses_original_baseline_even_if_file_changes(self):
+        (self.root / "app.py").write_text("eval('existing')\n")
+        baseline = self.write_json("baseline.json", self.scan())
+        process = self.start_watch(baseline, "--interval", "0.3", "--iterations", "2")
+        self.first_event(process)
+        baseline.write_text("{broken-external-change")
+        (self.root / "app.py").write_text("print('fixed')\n")
+        stdout, stderr = process.communicate(timeout=10)
+        self.assertEqual(process.returncode, 0, stderr)
+        (event,) = [json.loads(line) for line in stdout.splitlines()]
+        self.assertEqual(len(event["resolved"]), 1)
+        self.assertEqual(event["new"], [])
+        self.assertEqual(baseline.read_text(), "{broken-external-change")
+
+    def test_scan_rejects_invalid_timeouts(self):
+        for value in ("0", "nan", "inf", "-1"):
+            with self.subTest(value=value):
+                self.cli(
+                    "scan",
+                    "--root",
+                    self.root,
+                    "--rules",
+                    self.rules,
+                    "--timeout",
+                    value,
+                    code=2,
+                )
+
+    def test_interrupt_during_regex_scan_cleans_up_worker(self):
+        rules = json.loads(self.rules.read_text())
+        rules["rules"][0]["pattern"] = "(a+)+$"
+        self.rules.write_text(json.dumps(rules))
+        (self.root / "app.py").write_text("a" * 200 + "!SECRET_CANARY_8379")
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "scan",
+                "--root",
+                str(self.root),
+                "--rules",
+                str(self.rules),
+                "--timeout",
+                "30",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        def cleanup():
+            if process.poll() is None:
+                process.kill()
+            process.communicate(timeout=5)
+
+        self.addCleanup(cleanup)
+        time.sleep(0.5)
+        process.send_signal(signal.SIGINT)
+        stdout, stderr = process.communicate(timeout=5)
+        self.assertEqual(process.returncode, 130, stderr)
+        self.assertEqual(stdout, "")
+        self.assertNotIn("Traceback", stderr)
+        self.assertNotIn("SECRET_CANARY_8379", stderr)
 
 
 if __name__ == "__main__":
